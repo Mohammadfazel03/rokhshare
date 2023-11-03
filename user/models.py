@@ -11,4 +11,4 @@ class User(AbstractUser):
 class UserToken(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     token = models.CharField(max_length=100, null=False)
-    expire_date = models.DateTimeField(auto_now=True)
+    expire_date = models.DateTimeField()
