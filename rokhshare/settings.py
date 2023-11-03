@@ -41,7 +41,8 @@ PASSWORD_RESET_TIMEOUT = config("PASSWORD_RESET_TIMEOUT")
 # Application definition
 
 INSTALLED_APPS = [
-    'user.apps.AppConfig',
+    'plan.apps.PlanConfig',
+    'user.apps.UserConfig',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
