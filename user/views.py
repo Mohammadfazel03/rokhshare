@@ -7,6 +7,7 @@ from django.utils.encoding import force_str
 from user.models import User, UserToken
 from django.utils import timezone
 
+
 # Create your views here.
 def activate(request, uidb64, token):
     try:
