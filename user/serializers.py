@@ -1,12 +1,20 @@
+from typing import Dict, Any
+
+from django.contrib.auth.models import update_last_login
 from django.contrib.auth.password_validation import validate_password
-from rest_framework import serializers
+from rest_framework import serializers, exceptions
 from rest_framework import validators
 from rest_framework.validators import UniqueValidator
 from django.db import transaction
+from rest_framework_simplejwt.serializers import TokenObtainSerializer
+from rest_framework_simplejwt.settings import api_settings
+from rest_framework_simplejwt.tokens import RefreshToken
+
 from user.models import *
 from hashlib import sha256
 from datetime import timedelta
 from django.utils import timezone
+
 
 class RegisterUserSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(
@@ -55,3 +63,39 @@ class RegisterUserSerializer(serializers.ModelSerializer):
             user_token.save()
 
         return user, user_token
+
+
+class LoginUserSerializers(TokenObtainSerializer):
+    token_class = RefreshToken
+
+    def validate(self, attrs: Dict[str, Any]) -> Dict[str, str]:
+        data = super().validate(attrs)
+
+        refresh = self.get_token(self.user)
+
+        data["refresh"] = str(refresh)
+        data["access"] = str(refresh.access_token)
+
+        if api_settings.UPDATE_LAST_LOGIN:
+            update_last_login(None, self.user)
+
+        return data
+
+
+class LoginSuperUserSerializers(TokenObtainSerializer):
+    token_class = RefreshToken
+
+    def validate(self, attrs: Dict[str, Any]) -> Dict[str, str]:
+        data = super().validate(attrs)
+
+        if not self.user.is_superuser:
+            raise exceptions.AuthenticationFailed()
+        refresh = self.get_token(self.user)
+
+        data["refresh"] = str(refresh)
+        data["access"] = str(refresh.access_token)
+
+        if api_settings.UPDATE_LAST_LOGIN:
+            update_last_login(None, self.user)
+
+        return data

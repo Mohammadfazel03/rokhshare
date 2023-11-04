@@ -8,7 +8,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 from django.core.mail import EmailMessage
-from user.serializers import RegisterUserSerializer
+from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers
 from django.template.loader import render_to_string
 
 
@@ -27,10 +27,20 @@ class AuthViewSet(ViewSet):
                 'uid': urlsafe_base64_encode(force_bytes(user.pk)),
                 'token': user_token.token,
             })
-            # Sending activation link in terminal
-            # user.email_user(subject, message)
             mail_subject = 'Activate your account.'
             email = EmailMessage(mail_subject, message, to=[user.email])
             email.send()
 
         return Response("created", status=status.HTTP_201_CREATED)
+
+    @action(methods=['POST'], detail=False, permission_classes=[AllowAny])
+    def login(self, request):
+        serializer = LoginUserSerializers(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
+
+    @action(methods=['POST'], detail=False, permission_classes=[AllowAny], url_path='login/admin')
+    def login_admin(self, request):
+        serializer = LoginSuperUserSerializers(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
