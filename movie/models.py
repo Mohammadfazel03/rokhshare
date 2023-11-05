@@ -31,6 +31,9 @@ class Media(Model):
     poster = ImageField(upload_to=media_poster_path_file)
     value = CharField(max_length=15, choices=MediaType.choices, default=MediaType.FREE)
     release_date = DateTimeField()
+    genres = ManyToManyField('Genre', through='GenreMedia')
+    countries = ManyToManyField('Country', through='CountryMedia')
+    collections = ManyToManyField('Collection', through='CollectionMedia')
 
 
 def movie_path_file(instance, filename):
@@ -41,6 +44,7 @@ class Movie(Model):
     media = ForeignKey(Media, on_delete=CASCADE)
     video = FileField(upload_to=movie_path_file)
     time = IntegerField()
+    casts = ManyToManyField('Artist', through='Cast')
 
 
 class TvSeries(Model):
@@ -66,6 +70,7 @@ class Episode(Model):
     video = FileField(upload_to=episode_path_file)
     time = IntegerField()
     synopsis = TextField()
+    casts = ManyToManyField('Artist', through='Cast')
 
 
 def genre_poster_path_file(instance, filename):
@@ -165,3 +170,8 @@ class SeenMedia(Model):
     movie = ForeignKey(Movie, on_delete=CASCADE, null=True)
     episode = ForeignKey(Episode, on_delete=CASCADE, null=True)
     created_at = DateTimeField(auto_now_add=True)
+
+
+class CollectionMedia(Model):
+    collection = ForeignKey(Collection, on_delete=CASCADE)
+    media = ForeignKey(Media, on_delete=CASCADE)
