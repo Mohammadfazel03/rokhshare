@@ -2,18 +2,18 @@ from django.db.models import *
 from django.utils.translation import gettext_lazy as _
 
 from user.models import User
-
+from django.utils.crypto import get_random_string
 
 def trailer_path_file(instance, filename):
-    return f"trailer/{instance.pk}-{instance.name}-{filename}"
+    return f"trailer/{get_random_string(length=8)}-{instance.name}-{filename}"
 
 
 def media_thumbnail_path_file(instance, filename):
-    return f"thumbnail/{instance.pk}-{instance.name}-{filename}"
+    return f"thumbnail/{get_random_string(length=8)}-{instance.name}-{filename}"
 
 
 def media_poster_path_file(instance, filename):
-    return f"poster/{instance.pk}-{instance.name}-{filename}"
+    return f"poster/{get_random_string(length=8)}-{instance.name}-{filename}"
 
 
 # Create your models here.
@@ -68,7 +68,7 @@ class Episode(Model):
 
 
 def genre_poster_path_file(instance, filename):
-    return f"genre-poster/{instance.pk}-{instance.title}-{filename}"
+    return f"genre-poster/{get_random_string(length=8)}-{instance.title}-{filename}"
 
 
 class Genre(Model):
@@ -82,7 +82,7 @@ class GenreMedia(Model):
 
 
 def country_flag_path_file(instance, filename):
-    return f"country-flag/{instance.pk}-{instance.name}-{filename}"
+    return f"country-flag/{get_random_string(length=8)}-{instance.name}-{filename}"
 
 
 class Country(Model):
@@ -96,7 +96,7 @@ class CountryMedia(Model):
 
 
 def gallery_path_file(instance, filename):
-    return f"gallery/{instance.pk}-{filename}"
+    return f"gallery/{get_random_string(length=8)}-{filename}"
 
 
 class MediaGallery(Model):
@@ -106,7 +106,7 @@ class MediaGallery(Model):
 
 
 def artist_path_file(instance, filename):
-    return f"artists/{instance.pk}-{instance.name}-{filename}"
+    return f"artists/{get_random_string(length=8)}-{instance.name}-{filename}"
 
 
 class Artist(Model):
@@ -129,7 +129,7 @@ class Slider(Model):
 
 
 def collection_poster_path_file(instance, filename):
-    return f"collection-poster/{instance.pk}-{instance.name}-{filename}"
+    return f"collection-poster/{get_random_string(length=8)}-{instance.name}-{filename}"
 
 
 class Collection(Model):

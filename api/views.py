@@ -8,6 +8,9 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 from django.core.mail import EmailMessage
+
+from api.permissions import IsSuperUser
+from movie.serializers import GenreSerializer
 from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers
 from django.template.loader import render_to_string
 
@@ -44,3 +47,18 @@ class AuthViewSet(ViewSet):
         serializer = LoginSuperUserSerializers(data=request.data)
         serializer.is_valid(raise_exception=True)
         return Response(serializer.validated_data, status=status.HTTP_200_OK)
+
+
+class GenreViewSet(ViewSet):
+
+    def get_permissions(self):
+        if self.action == 'create':
+            return [IsSuperUser()]
+        return super().get_permissions()
+
+    def create(self, request):
+        genre_serializer = GenreSerializer(data=request.data)
+        genre_serializer.is_valid(raise_exception=True)
+        genre_serializer.save()
+
+        return Response(data="created", status=status.HTTP_201_CREATED)
