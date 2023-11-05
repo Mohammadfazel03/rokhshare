@@ -6,10 +6,10 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from rest_framework.viewsets import ViewSet
+from rest_framework.viewsets import ViewSet, ModelViewSet
 from django.core.mail import EmailMessage
-
 from api.permissions import IsSuperUser
+from movie.models import Genre
 from movie.serializers import GenreSerializer
 from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers
 from django.template.loader import render_to_string
@@ -49,16 +49,22 @@ class AuthViewSet(ViewSet):
         return Response(serializer.validated_data, status=status.HTTP_200_OK)
 
 
-class GenreViewSet(ViewSet):
+class GenreViewSet(ModelViewSet):
+    permission_classes = [IsSuperUser]
+    serializer_class = GenreSerializer
+    queryset = Genre.objects.all()
 
-    def get_permissions(self):
-        if self.action == 'create':
-            return [IsSuperUser()]
-        return super().get_permissions()
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
 
-    def create(self, request):
-        genre_serializer = GenreSerializer(data=request.data)
-        genre_serializer.is_valid(raise_exception=True)
-        genre_serializer.save()
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
 
-        return Response(data="created", status=status.HTTP_201_CREATED)
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
