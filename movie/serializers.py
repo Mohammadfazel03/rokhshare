@@ -1,6 +1,6 @@
 from rest_framework.serializers import *
 
-from movie.models import Genre, Country
+from movie.models import Genre, Country, Artist
 
 
 class GenreSerializer(ModelSerializer):
@@ -14,3 +14,8 @@ class CountrySerializer(ModelSerializer):
         model = Country
         fields = "__all__"
 
+
+class ArtistSerializer(ModelSerializer):
+    class Meta:
+        model = Artist
+        fields = "__all__"
