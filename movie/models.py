@@ -4,6 +4,7 @@ from django.utils.translation import gettext_lazy as _
 from user.models import User
 from django.utils.crypto import get_random_string
 
+
 def trailer_path_file(instance, filename):
     return f"trailer/{get_random_string(length=8)}-{instance.name}-{filename}"
 

@@ -10,7 +10,7 @@ from rest_framework.viewsets import ViewSet, ModelViewSet
 from django.core.mail import EmailMessage
 from api.permissions import IsSuperUser
 from movie.models import Genre
-from movie.serializers import GenreSerializer
+from movie.serializers import GenreSerializer, CountrySerializer
 from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers
 from django.template.loader import render_to_string
 
@@ -52,6 +52,27 @@ class AuthViewSet(ViewSet):
 class GenreViewSet(ModelViewSet):
     permission_classes = [IsSuperUser]
     serializer_class = GenreSerializer
+    queryset = Genre.objects.all()
+
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+
+class CountryViewSet(ModelViewSet):
+    permission_classes = [IsSuperUser]
+    serializer_class = CountrySerializer
     queryset = Genre.objects.all()
 
     def create(self, request, *args, **kwargs):
