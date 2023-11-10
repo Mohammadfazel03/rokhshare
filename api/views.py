@@ -1,5 +1,4 @@
 from django.contrib.sites.shortcuts import get_current_site
-from django.shortcuts import render
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from rest_framework import status
@@ -9,8 +8,8 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet, ModelViewSet
 from django.core.mail import EmailMessage
 from api.permissions import IsSuperUser
-from movie.models import Genre, Artist, Country
-from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializer
+from movie.models import Genre, Artist, Country, Movie
+from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializer, MovieSerializer
 from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers
 from django.template.loader import render_to_string
 
@@ -110,3 +109,12 @@ class ArtistViewSet(ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
+
+
+class MovieViewSet(ModelViewSet):
+    permission_classes = [IsSuperUser]
+    serializer_class = MovieSerializer
+
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+

@@ -33,11 +33,10 @@ class Media(Model):
     release_date = DateTimeField()
     genres = ManyToManyField('Genre', through='GenreMedia')
     countries = ManyToManyField('Country', through='CountryMedia')
-    collections = ManyToManyField('Collection', through='CollectionMedia')
 
 
 def movie_path_file(instance, filename):
-    return f"movie/{instance.media.pk}-{instance.media.name}-{filename}"
+    return f"movie-video/{instance.media.pk}-{instance.media.name}-{filename}"
 
 
 class Movie(Model):
@@ -58,7 +57,7 @@ class Season(Model):
 
 
 def episode_path_file(instance, filename):
-    return f"movie/{instance.season.series.media.pk}" \
+    return f"movie-video/{instance.season.series.media.pk}" \
            f"-S{instance.season.number}-E{instance.number}" \
            f"-{instance.name}-{filename}"
 
@@ -122,9 +121,21 @@ class Artist(Model):
 
 
 class Cast(Model):
+    class CastPosition(TextChoices):
+        OTHER = "Free", _("Free")
+        ACTOR = "Subscription", _("Subscription")
+        DIRECTOR = "Director", _("Director")
+        PRODUCER = "Producer", _("Producer")
+        WRITER = "Writer", _("Writer")
+        EDITOR = "Editor", _("Editor")
+        EXECUTOR_OF_PLAN = "Executor Of Plan", _("Executor Of Plan")
+        PRODUCTION_MANAGER = "Production Manager", _("Production Manager")
+        DIRECTOR_OF_FILMING_MANAGER = "Director Of Filming Manager", _("Production Manager")
+
     movie = ForeignKey(Movie, on_delete=CASCADE, null=True)
     episode = ForeignKey(Episode, on_delete=CASCADE, null=True)
     artist = ForeignKey(Artist, on_delete=CASCADE, null=False)
+    position = CharField(max_length=50, choices=CastPosition.choices, default=CastPosition.OTHER)
 
 
 class Slider(Model):
@@ -145,6 +156,7 @@ class Collection(Model):
     is_private = BooleanField()
     is_confirm = BooleanField()
     poster = ImageField(upload_to=collection_poster_path_file)
+    collections = ManyToManyField(Media, through='CollectionMedia')
 
 
 class Comment(Model):
