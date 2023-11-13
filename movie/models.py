@@ -45,6 +45,9 @@ class Movie(Model):
     time = IntegerField()
     casts = ManyToManyField('Artist', through='Cast')
 
+    @property
+    def media__id(self):
+        return self.media.id
 
 class TvSeries(Model):
     media = ForeignKey(Media, on_delete=CASCADE)
