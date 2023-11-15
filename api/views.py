@@ -8,9 +8,9 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet, ModelViewSet
 from django.core.mail import EmailMessage
 from api.permissions import IsSuperUser
-from movie.models import Genre, Artist, Country, Movie
+from movie.models import Genre, Artist, Country, Movie, TvSeries
 from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializer, CreateMovieSerializer, \
-    MovieSerializer
+    MovieSerializer, CreateSerialSerializer, SerialSerializer
 from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers
 from django.template.loader import render_to_string
 
@@ -150,6 +150,47 @@ class MovieViewSet(ModelViewSet):
         if getattr(instance, '_prefetched_objects_cache', None):
             # If 'prefetch_related' has been applied to a queryset, we need to
             # forcibly invalidate the prefetch cache on the instance.
+            instance._prefetched_objects_cache = {}
+
+        return Response({"message": "ok"})
+
+
+class SeriesViewSet(ModelViewSet):
+    permission_classes = [IsSuperUser]
+    lookup_field = "media__id"
+
+    def get_serializer_class(self):
+        if self.action in ['create', 'partial_update']:
+            return CreateSerialSerializer
+        elif self.action in ['retrieve', 'list', 'destroy']:
+            return SerialSerializer
+
+    def get_queryset(self):
+        if self.action in ['retrieve', 'list', 'destroy', 'partial_update']:
+            return TvSeries.objects.all().select_related("media")
+
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance = instance.media
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        if getattr(instance, '_prefetched_objects_cache', None):
             instance._prefetched_objects_cache = {}
 
         return Response({"message": "ok"})

@@ -1,7 +1,7 @@
 from rest_framework import fields
 from rest_framework.serializers import *
 from django.db import transaction
-from movie.models import Genre, Country, Artist, Media, Movie, Cast, GenreMedia, CountryMedia
+from movie.models import Genre, Country, Artist, Media, Movie, Cast, GenreMedia, CountryMedia, TvSeries
 
 
 class GenreSerializer(ModelSerializer):
@@ -146,5 +146,84 @@ class MovieSerializer(ModelSerializer):
 
     class Meta:
         model = Movie
+        fields = "__all__"
+        lookup_field = "media__id"
+
+
+class CreateSerialSerializer(ModelSerializer):
+    season_number = IntegerField(allow_null=False, write_only=True)
+    genres = PrimaryKeyRelatedField(many=True, read_only=False, required=False, queryset=Genre.objects.all())
+    countries = PrimaryKeyRelatedField(many=True, read_only=False, required=False, queryset=Country.objects.all())
+
+    class Meta:
+        model = Media
+        fields = "__all__"
+        lookup_field = "id"
+
+    def create(self, validated_data):
+        with transaction.atomic():
+            genres = validated_data.pop("genres")
+            countries = validated_data.pop("countries")
+            season_number = validated_data.pop("season_number")
+            media = Media.objects.create(**validated_data)
+            TvSeries.objects.create(media=media, season_number=season_number)
+
+            for genre in genres:
+                GenreMedia.objects.create(genre=genre, media=media)
+
+            for country in countries:
+                CountryMedia.objects.create(country=country, media=media)
+
+        return media
+
+    def update(self, instance, validated_data):
+
+        if validated_data.get("release_date", None):
+            instance.media.release_date = validated_data['release_date']
+
+        if validated_data.get("name", None):
+            instance.media.name = validated_data['name']
+
+        if validated_data.get("trailer", None):
+            instance.media.trailer = validated_data['trailer']
+
+        if validated_data.get("synopsis", None):
+            instance.media.synopsis = validated_data['synopsis']
+
+        if validated_data.get("thumbnail", None):
+            instance.media.thumbnail = validated_data['thumbnail']
+
+        if validated_data.get("poster", None):
+            instance.media.poster = validated_data['poster']
+
+        if validated_data.get("value", None):
+            instance.media.value = validated_data['value']
+
+        if validated_data.get("season_number", None):
+            instance.season_number = validated_data['season_number']
+
+        with transaction.atomic():
+            if validated_data.get('genres', None):
+                instance.media.genres.clear()
+                for genre in validated_data.get('genres', []):
+                    GenreMedia(genre=genre, media=instance.media).save()
+
+            if validated_data.get('countries', None):
+                instance.media.countries.clear()
+                for country in validated_data.get('countries', []):
+                    CountryMedia(country=country, media=instance.media).save()
+
+            instance.media.save()
+            instance.save()
+
+        return CreateMovieSerializer()
+
+
+class SerialSerializer(ModelSerializer):
+    media = MediaSerializer(read_only=True)
+    casts = ArtistSerializer(read_only=True, many=True)
+
+    class Meta:
+        model = TvSeries
         fields = "__all__"
         lookup_field = "media__id"

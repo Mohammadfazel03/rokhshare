@@ -49,6 +49,7 @@ class Movie(Model):
     def media__id(self):
         return self.media.id
 
+
 class TvSeries(Model):
     media = ForeignKey(Media, on_delete=CASCADE)
     season_number = IntegerField()
