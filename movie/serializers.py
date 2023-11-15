@@ -1,7 +1,7 @@
 from rest_framework import fields
 from rest_framework.serializers import *
 from django.db import transaction
-from movie.models import Genre, Country, Artist, Media, Movie, Cast, GenreMedia, CountryMedia, TvSeries
+from movie.models import Genre, Country, Artist, Media, Movie, Cast, GenreMedia, CountryMedia, TvSeries, Season, Episode
 
 
 class GenreSerializer(ModelSerializer):
@@ -227,3 +227,50 @@ class SerialSerializer(ModelSerializer):
         model = TvSeries
         fields = "__all__"
         lookup_field = "media__id"
+
+
+class SeasonSerializer(ModelSerializer):
+    class Meta:
+        model = Season
+        fields = "__all__"
+        validators = [
+            UniqueTogetherValidator(
+                queryset=Season.objects.all(),
+                fields=['series', 'number']
+            )
+        ]
+
+
+class EpisodeSerializer(ModelSerializer):
+    casts = fields.JSONField(read_only=False, validators=[cast_validator], required=False)
+
+    class Meta:
+        model = Episode
+        fields = "__all__"
+        validators = [
+            UniqueTogetherValidator(
+                queryset=Episode.objects.all(),
+                fields=['season', 'number']
+            )
+        ]
+
+    def create(self, validated_data):
+        casts = validated_data.pop('casts', [])
+        with transaction.atomic():
+            instance = Episode.objects.create(**validated_data)
+            for cast in casts:
+                Cast(artist_id=cast['artist_id'], position=cast['position'], episode=instance).save()
+
+        return validated_data
+
+    def update(self, instance, validated_data):
+
+        with transaction.atomic():
+            instance = super().update(instance, validated_data)
+
+            if validated_data.get('casts', None):
+                instance.casts.clear()
+                for cast in validated_data.get('casts', []):
+                    Cast(artist_id=cast['artist_id'], position=cast['position'], episode_id=instance.id).save()
+
+        return CreateMovieSerializer()
