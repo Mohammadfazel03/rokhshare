@@ -1,7 +1,8 @@
 from rest_framework import fields
 from rest_framework.serializers import *
 from django.db import transaction
-from movie.models import Genre, Country, Artist, Media, Movie, Cast, GenreMedia, CountryMedia, TvSeries, Season, Episode
+from movie.models import Genre, Country, Artist, Media, Movie, Cast, GenreMedia, CountryMedia, TvSeries, Season, \
+    Episode, MediaGallery
 
 
 class GenreSerializer(ModelSerializer):
@@ -275,3 +276,16 @@ class EpisodeSerializer(ModelSerializer):
                     Cast(artist_id=cast['artist_id'], position=cast['position'], episode_id=instance.id).save()
 
         return instance
+
+
+class MediaGallerySerializer(ModelSerializer):
+    class Meta:
+        model = MediaGallery
+        fields = "__all__"
+
+    def is_valid(self, raise_exception=False):
+        if not self.initial_data.get('movie', None) and not self.initial_data.get('episode', None):
+            raise ValidationError("cant both movie and episode be null")
+        return super().is_valid(raise_exception=raise_exception)
+
+
