@@ -264,13 +264,14 @@ class EpisodeSerializer(ModelSerializer):
         return validated_data
 
     def update(self, instance, validated_data):
+        casts = validated_data.pop('casts', [])
 
         with transaction.atomic():
             instance = super().update(instance, validated_data)
 
-            if validated_data.get('casts', None):
+            if len(casts) > 0:
                 instance.casts.clear()
-                for cast in validated_data.get('casts', []):
+                for cast in casts:
                     Cast(artist_id=cast['artist_id'], position=cast['position'], episode_id=instance.id).save()
 
-        return CreateMovieSerializer()
+        return instance
