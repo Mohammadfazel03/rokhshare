@@ -4,7 +4,8 @@ from django.db import transaction
 from rest_framework.validators import UniqueValidator
 
 from movie.models import Genre, Country, Artist, Media, Movie, Cast, GenreMedia, CountryMedia, TvSeries, Season, \
-    Episode, MediaGallery, Slider
+    Episode, MediaGallery, Slider, Collection
+from user.models import User
 
 
 class GenreSerializer(ModelSerializer):
@@ -322,3 +323,16 @@ class SliderSerializer(ModelSerializer):
                     ret[field.field_name] = field.to_representation(attribute)
 
         return ret
+
+
+class CollectionSerializer(ModelSerializer):
+    user = PrimaryKeyRelatedField(many=False, required=True, write_only=True, queryset=User.objects.all())
+
+    class Meta:
+        model = Collection
+        exclude = ['media']
+
+
+class MediaInputSerializer(Serializer):
+    media = PrimaryKeyRelatedField(many=True, queryset=Media.objects.all(), required=True, allow_null=False,
+                                   allow_empty=False)

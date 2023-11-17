@@ -157,10 +157,10 @@ class Collection(Model):
     user = ForeignKey(User, on_delete=CASCADE)
     name = CharField(max_length=100)
     created_at = DateTimeField(auto_now_add=True)
-    is_private = BooleanField()
-    is_confirm = BooleanField()
+    is_private = BooleanField(default=False)
+    is_confirm = BooleanField(default=False)
     poster = ImageField(upload_to=collection_poster_path_file)
-    collections = ManyToManyField(Media, through='CollectionMedia')
+    media = ManyToManyField(Media, through='CollectionMedia')
 
 
 class Comment(Model):
@@ -170,7 +170,7 @@ class Comment(Model):
     comment = TextField()
     title = CharField(max_length=100)
     created_at = DateTimeField(auto_now_add=True)
-    is_confirm = BooleanField()
+    is_confirm = BooleanField(default=False)
 
 
 class Rating(Model):
