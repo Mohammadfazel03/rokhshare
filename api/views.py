@@ -8,10 +8,10 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet, ModelViewSet
 from django.core.mail import EmailMessage
 from api.permissions import IsSuperUser
-from movie.models import Genre, Artist, Country, Movie, TvSeries, Season, Episode, MediaGallery
+from movie.models import Genre, Artist, Country, Movie, TvSeries, Season, Episode, MediaGallery, Slider
 from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializer, CreateMovieSerializer, \
     MovieSerializer, CreateSerialSerializer, SerialSerializer, SeasonSerializer, EpisodeSerializer, \
-    MediaGallerySerializer
+    MediaGallerySerializer, SliderSerializer
 from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers
 from django.template.loader import render_to_string
 
@@ -241,7 +241,6 @@ class EpisodeViewSet(ModelViewSet):
 
 
 class MediaGalleryViewSet(ModelViewSet):
-    permission_classes = [IsSuperUser]
     serializer_class = MediaGallerySerializer
     queryset = MediaGallery.objects.all()
 
@@ -251,6 +250,31 @@ class MediaGalleryViewSet(ModelViewSet):
         return [IsSuperUser()]
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+
+class SliderViewSet(ModelViewSet):
+    serializer_class = SliderSerializer
+    queryset = Slider.objects.all()
+
+    def get_permissions(self):
+        if self.action in ['retrieve', 'list']:
+            return [AllowAny()]
+        return [IsSuperUser()]
+
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
 
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)

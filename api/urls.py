@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from api.views import AuthViewSet, GenreViewSet, CountryViewSet, ArtistViewSet, MovieViewSet, SeriesViewSet, \
-    SeasonViewSet, EpisodeViewSet, MediaGalleryViewSet
+    SeasonViewSet, EpisodeViewSet, MediaGalleryViewSet, SliderViewSet
 
 url = DefaultRouter()
 url.register('auth', AuthViewSet, basename='auth')
@@ -15,6 +15,7 @@ url.register('serial/season/episode', EpisodeViewSet, basename='serial-season-ep
 url.register('serial/season', SeasonViewSet, basename='serial-season')
 url.register('serial', SeriesViewSet, basename='serial')
 url.register('media/gallery', MediaGalleryViewSet, basename='media-gallery')
+url.register('slider', SliderViewSet, basename='slider')
 
 urlpatterns = [
                   path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
