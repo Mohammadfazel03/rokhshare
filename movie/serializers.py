@@ -4,7 +4,7 @@ from django.db import transaction
 from rest_framework.validators import UniqueValidator
 
 from movie.models import Genre, Country, Artist, Media, Movie, Cast, GenreMedia, CountryMedia, TvSeries, Season, \
-    Episode, MediaGallery, Slider, Collection
+    Episode, MediaGallery, Slider, Collection, Comment
 from user.models import User
 
 
@@ -336,3 +336,16 @@ class CollectionSerializer(ModelSerializer):
 class MediaInputSerializer(Serializer):
     media = PrimaryKeyRelatedField(many=True, queryset=Media.objects.all(), required=True, allow_null=False,
                                    allow_empty=False)
+
+
+class CommentSerializer(ModelSerializer):
+    user = PrimaryKeyRelatedField(many=False, required=True, write_only=True, queryset=User.objects.all())
+
+    class Meta:
+        model = Comment
+        fields = "__all__"
+
+    def is_valid(self, raise_exception=False):
+        if not self.initial_data.get('movie', None) and not self.initial_data.get('episode', None):
+            raise ValidationError("cant both movie and episode be null")
+        return super().is_valid(raise_exception=raise_exception)
