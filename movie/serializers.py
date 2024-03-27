@@ -282,7 +282,7 @@ class SeasonSerializer(ModelSerializer):
 
 
 class EpisodeSerializer(ModelSerializer):
-    casts = fields.JSONField(read_only=False, validators=[cast_validator], required=False)
+    casts = ArtistSerializer(read_only=True, many=True)
     rating = SerializerMethodField(read_only=True)
 
     class Meta:
