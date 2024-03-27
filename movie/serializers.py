@@ -1,10 +1,11 @@
+from django.db.models import Avg
 from rest_framework import fields
 from rest_framework.serializers import *
 from django.db import transaction
 from rest_framework.validators import UniqueValidator
 
 from movie.models import Genre, Country, Artist, Media, Movie, Cast, GenreMedia, CountryMedia, TvSeries, Season, \
-    Episode, MediaGallery, Slider, Collection, Comment
+    Episode, MediaGallery, Slider, Collection, Comment, Rating
 from user.models import User
 
 
@@ -147,11 +148,15 @@ class MediaSerializer(ModelSerializer):
 class MovieSerializer(ModelSerializer):
     media = MediaSerializer(read_only=True)
     casts = ArtistSerializer(read_only=True, many=True)
+    rating = SerializerMethodField(read_only=True)
 
     class Meta:
         model = Movie
         fields = "__all__"
         lookup_field = "media__id"
+
+    def get_rating(self, obj):
+        return Rating.objects.filter(movie=obj).aggregate(Avg('rating'))['rating__avg']
 
 
 class CreateSerialSerializer(ModelSerializer):
@@ -226,11 +231,15 @@ class CreateSerialSerializer(ModelSerializer):
 class SerialSerializer(ModelSerializer):
     media = MediaSerializer(read_only=True)
     casts = ArtistSerializer(read_only=True, many=True)
+    rating = SerializerMethodField(read_only=True)
 
     class Meta:
         model = TvSeries
         fields = "__all__"
         lookup_field = "media__id"
+
+    def get_rating(self, obj):
+        return Rating.objects.filter(movie=obj).aggregate(Avg('rating'))['rating__avg']
 
 
 class SeasonSerializer(ModelSerializer):
@@ -349,3 +358,29 @@ class CommentSerializer(ModelSerializer):
         if not self.initial_data.get('movie', None) and not self.initial_data.get('episode', None):
             raise ValidationError("cant both movie and episode be null")
         return super().is_valid(raise_exception=raise_exception)
+
+
+class RatingSerializer(ModelSerializer):
+    class Meta:
+        model = Rating
+        fields = "__all__"
+
+    def validate_rating(self, value):
+        if value > 10 or value < 0:
+            raise ValidationError("out of range")
+        return value
+
+    def is_valid(self, raise_exception=False):
+        if not self.initial_data.get('movie', None) and not self.initial_data.get('episode', None):
+            raise ValidationError("cant both movie and episode be null")
+        return super().is_valid(raise_exception=raise_exception)
+
+    def create(self, validated_data):
+        try:
+            instance = Rating.objects.get(movie=validated_data.get('movie'), user=validated_data['user'],
+                                          episode=validated_data.get('episode'))
+            instance = super().update(instance, validated_data)
+        except Rating.DoesNotExist:
+            instance = Rating.objects.create(**validated_data)
+
+        return instance
