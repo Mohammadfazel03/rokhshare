@@ -171,7 +171,7 @@ class MovieSerializer(ModelSerializer):
 
     @staticmethod
     def get_rating(obj):
-        return Rating.objects.filter(movie=obj).aggregate(Avg('rating'))['rating__avg']
+        return Rating.objects.filter(media=obj.media).aggregate(Avg('rating'))['rating__avg']
 
     @staticmethod
     def get_comments(obj):
@@ -261,7 +261,7 @@ class SerialSerializer(ModelSerializer):
 
     @staticmethod
     def get_rating(obj):
-        return Rating.objects.filter(movie=obj).aggregate(Avg('rating'))['rating__avg']
+        return Rating.objects.filter(media=obj.media).aggregate(Avg('rating'))['rating__avg']
 
     @staticmethod
     def get_comments(obj):
@@ -283,6 +283,7 @@ class SeasonSerializer(ModelSerializer):
 
 class EpisodeSerializer(ModelSerializer):
     casts = fields.JSONField(read_only=False, validators=[cast_validator], required=False)
+    rating = SerializerMethodField(read_only=True)
 
     class Meta:
         model = Episode
@@ -293,6 +294,10 @@ class EpisodeSerializer(ModelSerializer):
                 fields=['season', 'number']
             )
         ]
+
+    @staticmethod
+    def get_rating(obj):
+        return Rating.objects.filter(episode=obj).aggregate(Avg('rating'))['rating__avg']
 
     def create(self, validated_data):
         casts = validated_data.pop('casts', [])
@@ -385,13 +390,16 @@ class RatingSerializer(ModelSerializer):
         return value
 
     def is_valid(self, raise_exception=False):
-        if not self.initial_data.get('movie', None) and not self.initial_data.get('episode', None):
-            raise ValidationError("cant both movie and episode be null")
-        return super().is_valid(raise_exception=raise_exception)
+        res = super().is_valid(raise_exception=raise_exception)
+        if self.initial_data.get('media', None) is None and self.initial_data.get('episode', None) is None:
+            raise ValidationError("cant both media and episode be null")
+        elif self.initial_data.get('media', None) is not None and self.initial_data.get('episode', None) is not None:
+            raise ValidationError("cant both media and episode be fill")
+        return res
 
     def create(self, validated_data):
         try:
-            instance = Rating.objects.get(movie=validated_data.get('movie'), user=validated_data['user'],
+            instance = Rating.objects.get(media=validated_data.get('media'), user=validated_data['user'],
                                           episode=validated_data.get('episode'))
             instance = super().update(instance, validated_data)
         except Rating.DoesNotExist:

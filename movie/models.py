@@ -176,7 +176,7 @@ class Comment(Model):
 class Rating(Model):
     rating = SmallIntegerField()
     user = ForeignKey(User, on_delete=CASCADE)
-    movie = ForeignKey(Movie, on_delete=CASCADE, null=True)
+    media = ForeignKey(Media, on_delete=CASCADE, null=True)
     episode = ForeignKey(Episode, on_delete=CASCADE, null=True)
     created_at = DateTimeField(auto_now_add=True)
 
