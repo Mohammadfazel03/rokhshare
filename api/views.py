@@ -408,7 +408,7 @@ class CommentViewSet(ModelViewSet):
 
     def get_permissions(self):
         if self.action == 'list':
-            return [AllowAny()]
+            return [IsSuperUser()]
         elif self.action == 'create':
             return [IsAuthenticated()]
         elif self.action == 'confirm_comment':
@@ -418,8 +418,6 @@ class CommentViewSet(ModelViewSet):
         return [IsOwner()]
 
     def get_queryset(self):
-        if self.action == 'list':
-            return Comment.objects.filter(is_confirm=True)
         return Comment.objects.all()
 
     def create(self, request, *args, **kwargs):

@@ -17,9 +17,12 @@ class CommentSerializer(ModelSerializer):
         fields = "__all__"
 
     def is_valid(self, raise_exception=False):
-        if not self.initial_data.get('movie', None) and not self.initial_data.get('episode', None):
-            raise ValidationError("cant both movie and episode be null")
-        return super().is_valid(raise_exception=raise_exception)
+        res = super().is_valid(raise_exception=raise_exception)
+        if self.initial_data.get('media', None) is None and self.initial_data.get('episode', None) is None:
+            raise ValidationError("cant both media and episode be null")
+        elif self.initial_data.get('media', None) is not None and self.initial_data.get('episode', None) is not None:
+            raise ValidationError("cant both media and episode be fill")
+        return res
 
 
 class GenreSerializer(ModelSerializer):
@@ -175,7 +178,7 @@ class MovieSerializer(ModelSerializer):
 
     @staticmethod
     def get_comments(obj):
-        return CommentSerializer(Comment.objects.filter(movie=obj, is_confirm=True).order_by('-created_at')[:5],
+        return CommentSerializer(Comment.objects.filter(media=obj.media, is_confirm=True).order_by('-created_at')[:5],
                                  many=True).data
 
 
@@ -265,7 +268,7 @@ class SerialSerializer(ModelSerializer):
 
     @staticmethod
     def get_comments(obj):
-        return CommentSerializer(Comment.objects.filter(movie=obj, is_confirm=True).order_by('-created_at')[:5],
+        return CommentSerializer(Comment.objects.filter(media=obj.media, is_confirm=True).order_by('-created_at')[:5],
                                  many=True).data
 
 
@@ -284,6 +287,7 @@ class SeasonSerializer(ModelSerializer):
 class EpisodeSerializer(ModelSerializer):
     casts = ArtistSerializer(read_only=True, many=True)
     rating = SerializerMethodField(read_only=True)
+    comments = SerializerMethodField(read_only=True)
 
     class Meta:
         model = Episode
@@ -320,6 +324,11 @@ class EpisodeSerializer(ModelSerializer):
                     Cast(artist_id=cast['artist_id'], position=cast['position'], episode_id=instance.id).save()
 
         return instance
+
+    @staticmethod
+    def get_comments(obj):
+        return CommentSerializer(Comment.objects.filter(episode=obj, is_confirm=True).order_by('-created_at')[:5],
+                                 many=True).data
 
 
 class MediaGallerySerializer(ModelSerializer):

@@ -165,7 +165,7 @@ class Collection(Model):
 
 class Comment(Model):
     user = ForeignKey(User, on_delete=CASCADE)
-    movie = ForeignKey(Movie, on_delete=CASCADE, null=True)
+    media = ForeignKey(Media, on_delete=CASCADE, null=True)
     episode = ForeignKey(Episode, on_delete=CASCADE, null=True)
     comment = TextField()
     title = CharField(max_length=100)
