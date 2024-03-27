@@ -434,11 +434,10 @@ class CommentViewSet(ModelViewSet):
 
     def update(self, request, *args, **kwargs):
         request.data._mutable = True
-        partial = kwargs.pop('partial', False)
         instance = self.get_object()
         request.data['user'] = request.user.id
         request.data['is_confirm'] = request.user.is_superuser or instance.is_confirm
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
 
@@ -455,7 +454,7 @@ class CommentViewSet(ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @action(methods=['POST'], detail=True, url_path='comment', url_name='comment')
+    @action(methods=['POST'], detail=True, url_path='confirm', url_name='confirm')
     def confirm_comment(self, request, pk):
         confirm = request.data.get('is_confirm', None)
         if confirm is None:
@@ -477,7 +476,7 @@ class CommentViewSet(ModelViewSet):
 
     @action(methods=['get'], detail=False, url_name='my_comment', url_path='me')
     def me_comment(self, request):
-        queryset = Comment.objects.filter(user=request.user)
+        queryset = Comment.objects.filter(user=request.user).order_by('created_at')
         queryset = self.filter_queryset(queryset)
 
         page = self.paginate_queryset(queryset)
