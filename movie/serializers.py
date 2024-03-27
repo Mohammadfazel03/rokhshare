@@ -9,6 +9,19 @@ from movie.models import Genre, Country, Artist, Media, Movie, Cast, GenreMedia,
 from user.models import User
 
 
+class CommentSerializer(ModelSerializer):
+    user = PrimaryKeyRelatedField(many=False, required=True, write_only=True, queryset=User.objects.all())
+
+    class Meta:
+        model = Comment
+        fields = "__all__"
+
+    def is_valid(self, raise_exception=False):
+        if not self.initial_data.get('movie', None) and not self.initial_data.get('episode', None):
+            raise ValidationError("cant both movie and episode be null")
+        return super().is_valid(raise_exception=raise_exception)
+
+
 class GenreSerializer(ModelSerializer):
     class Meta:
         model = Genre
@@ -149,14 +162,21 @@ class MovieSerializer(ModelSerializer):
     media = MediaSerializer(read_only=True)
     casts = ArtistSerializer(read_only=True, many=True)
     rating = SerializerMethodField(read_only=True)
+    comments = SerializerMethodField(read_only=True)
 
     class Meta:
         model = Movie
         fields = "__all__"
         lookup_field = "media__id"
 
-    def get_rating(self, obj):
+    @staticmethod
+    def get_rating(obj):
         return Rating.objects.filter(movie=obj).aggregate(Avg('rating'))['rating__avg']
+
+    @staticmethod
+    def get_comments(obj):
+        return CommentSerializer(Comment.objects.filter(movie=obj, is_confirm=True).order_by('-created_at')[:5],
+                                 many=True).data
 
 
 class CreateSerialSerializer(ModelSerializer):
@@ -232,14 +252,21 @@ class SerialSerializer(ModelSerializer):
     media = MediaSerializer(read_only=True)
     casts = ArtistSerializer(read_only=True, many=True)
     rating = SerializerMethodField(read_only=True)
+    comments = SerializerMethodField(read_only=True)
 
     class Meta:
         model = TvSeries
         fields = "__all__"
         lookup_field = "media__id"
 
-    def get_rating(self, obj):
+    @staticmethod
+    def get_rating(obj):
         return Rating.objects.filter(movie=obj).aggregate(Avg('rating'))['rating__avg']
+
+    @staticmethod
+    def get_comments(obj):
+        return CommentSerializer(Comment.objects.filter(movie=obj, is_confirm=True).order_by('-created_at')[:5],
+                                 many=True).data
 
 
 class SeasonSerializer(ModelSerializer):
@@ -345,19 +372,6 @@ class CollectionSerializer(ModelSerializer):
 class MediaInputSerializer(Serializer):
     media = PrimaryKeyRelatedField(many=True, queryset=Media.objects.all(), required=True, allow_null=False,
                                    allow_empty=False)
-
-
-class CommentSerializer(ModelSerializer):
-    user = PrimaryKeyRelatedField(many=False, required=True, write_only=True, queryset=User.objects.all())
-
-    class Meta:
-        model = Comment
-        fields = "__all__"
-
-    def is_valid(self, raise_exception=False):
-        if not self.initial_data.get('movie', None) and not self.initial_data.get('episode', None):
-            raise ValidationError("cant both movie and episode be null")
-        return super().is_valid(raise_exception=raise_exception)
 
 
 class RatingSerializer(ModelSerializer):
