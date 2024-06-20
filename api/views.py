@@ -10,7 +10,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet, ModelViewSet, GenericViewSet
 from django.core.mail import EmailMessage
-from advertise.models import AdvertiseSeen
+from advertise.models import AdvertiseSeen, Advertise
+from advertise.serializers import DashboardAdvertiseSerializer
 from api.permissions import IsSuperUser, IsOwner
 from movie.models import Genre, Artist, Country, Movie, TvSeries, Season, Episode, MediaGallery, Slider, Collection, \
     Media, Comment, Rating, SeenMedia
@@ -602,3 +603,9 @@ class DashboardViewSet(GenericViewSet):
         slider = Slider.objects.all().order_by("-priority")
         slider_serializer = DashboardSliderSerializer(slider, many=True)
         return Response(slider_serializer.data)
+
+    @action(methods=['get'], detail=False, url_name='advertise', url_path='advertise')
+    def advertise(self, request):
+        advertise = Advertise.objects.annotate(view_number=Count("advertiseseen")).order_by("-created_at").all()[:10]
+        advertise_serializer = DashboardAdvertiseSerializer(advertise, many=True)
+        return Response(advertise_serializer.data)
