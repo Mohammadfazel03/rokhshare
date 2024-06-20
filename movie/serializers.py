@@ -25,6 +25,29 @@ class CommentSerializer(ModelSerializer):
         return res
 
 
+class DashboardCommentMediaSerializer(ModelSerializer):
+    class Meta:
+        model = Media
+        fields = ("name", 'poster')
+
+
+class DashboardCommentSerializer(ModelSerializer):
+    username = CharField(source='user.username', read_only=True)
+    media = DashboardCommentMediaSerializer(read_only=True)
+
+    class Meta:
+        model = Comment
+        fields = ('comment', 'created_at', "is_confirm", "username", "media")
+
+    def to_representation(self, instance):
+        if instance.media is None:
+            media = Media.objects.filter(tvseries__season__episode=instance.episode).get()
+            instance.media = media
+
+        return super().to_representation(instance)
+
+
+
 class GenreSerializer(ModelSerializer):
     class Meta:
         model = Genre

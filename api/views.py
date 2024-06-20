@@ -17,7 +17,7 @@ from movie.models import Genre, Artist, Country, Movie, TvSeries, Season, Episod
 from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializer, CreateMovieSerializer, \
     MovieSerializer, CreateSerialSerializer, SerialSerializer, SeasonSerializer, EpisodeSerializer, \
     MediaGallerySerializer, SliderSerializer, CollectionSerializer, MediaInputSerializer, CommentSerializer, \
-    RatingSerializer
+    RatingSerializer, DashboardCommentSerializer
 from plan.serializers import DashboardPlanSerializer
 from user.models import User
 from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers, \
@@ -590,3 +590,9 @@ class DashboardViewSet(GenericViewSet):
         plan = Plan.objects.annotate(count_of_sub=Count("subscription")).order_by("-count_of_sub").all()[:10]
         plan_serializer = DashboardPlanSerializer(plan, many=True)
         return Response(plan_serializer.data)
+
+    @action(methods=['get'], detail=False, url_name='recently_comment', url_path='recently_comment')
+    def recently_comment(self, request):
+        comment = Comment.objects.all().order_by("-created_at")[:10]
+        comment_serializer = DashboardCommentSerializer(comment, many=True)
+        return Response(comment_serializer.data)
