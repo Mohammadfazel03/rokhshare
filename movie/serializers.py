@@ -47,7 +47,6 @@ class DashboardCommentSerializer(ModelSerializer):
         return super().to_representation(instance)
 
 
-
 class GenreSerializer(ModelSerializer):
     class Meta:
         model = Genre
@@ -438,3 +437,12 @@ class RatingSerializer(ModelSerializer):
             instance = Rating.objects.create(**validated_data)
 
         return instance
+
+
+class DashboardSliderSerializer(ModelSerializer):
+    media = DashboardCommentMediaSerializer(read_only=True)
+
+    class Meta:
+        model = Slider
+        fields = "__all__"
+

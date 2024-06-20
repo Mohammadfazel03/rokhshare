@@ -17,7 +17,7 @@ from movie.models import Genre, Artist, Country, Movie, TvSeries, Season, Episod
 from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializer, CreateMovieSerializer, \
     MovieSerializer, CreateSerialSerializer, SerialSerializer, SeasonSerializer, EpisodeSerializer, \
     MediaGallerySerializer, SliderSerializer, CollectionSerializer, MediaInputSerializer, CommentSerializer, \
-    RatingSerializer, DashboardCommentSerializer
+    RatingSerializer, DashboardCommentSerializer, DashboardSliderSerializer
 from plan.serializers import DashboardPlanSerializer
 from user.models import User
 from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers, \
@@ -596,3 +596,9 @@ class DashboardViewSet(GenericViewSet):
         comment = Comment.objects.all().order_by("-created_at")[:10]
         comment_serializer = DashboardCommentSerializer(comment, many=True)
         return Response(comment_serializer.data)
+
+    @action(methods=['get'], detail=False, url_name='slider', url_path='slider')
+    def slider(self, request):
+        slider = Slider.objects.all().order_by("-priority")
+        slider_serializer = DashboardSliderSerializer(slider, many=True)
+        return Response(slider_serializer.data)
