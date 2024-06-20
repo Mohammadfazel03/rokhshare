@@ -23,3 +23,4 @@ class AdvertiseSeen(models.Model):
     movie = models.ForeignKey(Movie, on_delete=models.CASCADE)
     episode = models.ForeignKey(Episode, on_delete=models.CASCADE)
     times = models.IntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)

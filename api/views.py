@@ -1,4 +1,6 @@
+from datetime import timedelta
 from django.contrib.sites.shortcuts import get_current_site
+from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from rest_framework import status, mixins
@@ -8,15 +10,20 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet, ModelViewSet, GenericViewSet
 from django.core.mail import EmailMessage
+from advertise.models import AdvertiseSeen
 from api.permissions import IsSuperUser, IsOwner
 from movie.models import Genre, Artist, Country, Movie, TvSeries, Season, Episode, MediaGallery, Slider, Collection, \
-    Media, Comment, Rating
+    Media, Comment, Rating, SeenMedia
 from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializer, CreateMovieSerializer, \
     MovieSerializer, CreateSerialSerializer, SerialSerializer, SeasonSerializer, EpisodeSerializer, \
     MediaGallerySerializer, SliderSerializer, CollectionSerializer, MediaInputSerializer, CommentSerializer, \
     RatingSerializer
+from user.models import User
 from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers
 from django.template.loader import render_to_string
+from django.db.models import Q
+from plan.models import Subscription
+from django.db.models import Count
 
 
 # Create your views here.
@@ -507,3 +514,59 @@ class RatingViewSet(GenericViewSet, mixins.CreateModelMixin, mixins.DestroyModel
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+
+class DashboardViewSet(GenericViewSet):
+    permission_classes = [IsSuperUser]
+
+    @action(methods=['get'], detail=False, url_name='header', url_path='header')
+    def header_information(self, request):
+        now = timezone.now()
+        users = User.objects.aggregate(
+            total=Count('id'),
+            old=Count('id', filter=Q(date_joined__lte=now - timedelta(days=7))),
+        )
+        movies = SeenMedia.objects.aggregate(
+            total=Count('id'),
+            old=Count('id', filter=Q(created_at__lte=now - timedelta(days=7))),
+        )
+
+        vip = Subscription.objects.aggregate(
+            total=Count('id', filter=Q(end_date__gte=now)),
+            old=Count('id',
+                      filter=Q(end_date__gte=now - timedelta(days=7)) & Q(created_at__lte=now - timedelta(days=7))),
+        )
+
+        ads = AdvertiseSeen.objects.aggregate(
+            total=Count('id'),
+            old=Count('id', filter=Q(created_at__lte=now - timedelta(days=7)))
+        )
+
+        user_ratio = 0
+        if users['total'] > 100:
+            user_ratio = (users['total'] - users['old']) / users['total'] * 100
+
+        movie_ratio = 0
+        if movies['total'] > 100:
+            movie_ratio = (movies['total'] - movies['old']) / movies['total'] * 100
+
+        ads_ratio = 0
+        if ads['total'] > 100:
+            ads_ratio = (ads['total'] - ads['old']) / ads['total'] * 100
+
+        vip_ratio = 0
+        if vip['total'] > 100:
+            vip_ratio = (vip['total'] - vip['old']) / vip['total'] * 100
+
+        return Response(
+            {
+                "users": users['total'],
+                "user_ratio": user_ratio,
+                "movies": movies['total'],
+                "movie_ratio": movie_ratio,
+                "ads": ads['total'],
+                "ads_ratio": ads_ratio,
+                "vip": vip['total'],
+                "vip_ratio": vip_ratio
+            }
+        )
