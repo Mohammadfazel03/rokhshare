@@ -19,9 +19,10 @@ from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializ
     MediaGallerySerializer, SliderSerializer, CollectionSerializer, MediaInputSerializer, CommentSerializer, \
     RatingSerializer
 from user.models import User
-from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers
+from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers, \
+    DashboardUserSerializer
 from django.template.loader import render_to_string
-from django.db.models import Q
+from django.db.models import Q, Exists, OuterRef
 from plan.models import Subscription
 from django.db.models import Count
 
@@ -570,3 +571,14 @@ class DashboardViewSet(GenericViewSet):
                 "vip_ratio": vip_ratio
             }
         )
+
+    @action(methods=['get'], detail=False, url_name='recently_user', url_path='recently_user')
+    def recently_user(self, request):
+        now = timezone.now()
+        is_premium = Exists(Subscription.objects.filter(user=OuterRef("pk"), end_date__gt=now))
+        seen_movies = Count("seenmedia")
+        recently_users = User.objects.filter(is_superuser=False).annotate(seen_movies=seen_movies, is_premium=is_premium).order_by(
+            "-date_joined").all()[:10]
+        recently_users_serializer = DashboardUserSerializer(recently_users, many=True)
+
+        return Response(recently_users_serializer.data)

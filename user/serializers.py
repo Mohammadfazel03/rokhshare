@@ -99,3 +99,16 @@ class LoginSuperUserSerializers(TokenObtainSerializer):
             update_last_login(None, self.user)
 
         return data
+
+
+class DashboardUserSerializer(serializers.ModelSerializer):
+    seen_movies = serializers.IntegerField()
+    is_premium = serializers.BooleanField()
+    full_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = User
+        fields = ('username', 'date_joined', 'is_premium', 'seen_movies', 'full_name')
+
+    def get_full_name(self, obj):
+        return '{} {}'.format(obj.first_name, obj.last_name)
