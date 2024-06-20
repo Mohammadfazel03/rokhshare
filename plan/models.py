@@ -9,6 +9,7 @@ class Plan(models.Model):
     description = models.TextField(null=False)
     days = models.IntegerField(null=False)
     price = models.IntegerField(null=False)
+    is_enable = models.BooleanField(null=False, blank=False, default=True)
 
 
 class Payment(models.Model):

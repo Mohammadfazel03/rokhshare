@@ -18,12 +18,13 @@ from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializ
     MovieSerializer, CreateSerialSerializer, SerialSerializer, SeasonSerializer, EpisodeSerializer, \
     MediaGallerySerializer, SliderSerializer, CollectionSerializer, MediaInputSerializer, CommentSerializer, \
     RatingSerializer
+from plan.serializers import DashboardPlanSerializer
 from user.models import User
 from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers, \
     DashboardUserSerializer
 from django.template.loader import render_to_string
 from django.db.models import Q, Exists, OuterRef
-from plan.models import Subscription
+from plan.models import Subscription, Plan
 from django.db.models import Count
 
 
@@ -577,8 +578,15 @@ class DashboardViewSet(GenericViewSet):
         now = timezone.now()
         is_premium = Exists(Subscription.objects.filter(user=OuterRef("pk"), end_date__gt=now))
         seen_movies = Count("seenmedia")
-        recently_users = User.objects.filter(is_superuser=False).annotate(seen_movies=seen_movies, is_premium=is_premium).order_by(
+        recently_users = User.objects.filter(is_superuser=False).annotate(seen_movies=seen_movies,
+                                                                          is_premium=is_premium).order_by(
             "-date_joined").all()[:10]
         recently_users_serializer = DashboardUserSerializer(recently_users, many=True)
 
         return Response(recently_users_serializer.data)
+
+    @action(methods=['get'], detail=False, url_name='popular_plan', url_path='popular_plan')
+    def popular_plan(self, request):
+        plan = Plan.objects.annotate(count_of_sub=Count("subscription")).order_by("-count_of_sub").all()[:10]
+        plan_serializer = DashboardPlanSerializer(plan, many=True)
+        return Response(plan_serializer.data)
