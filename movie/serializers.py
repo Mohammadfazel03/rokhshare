@@ -446,3 +446,40 @@ class DashboardSliderSerializer(ModelSerializer):
         model = Slider
         fields = "__all__"
 
+
+class AdminMovieSerializer(ModelSerializer):
+    name = CharField(source='media.name')
+    release_date = DateTimeField(source='media.release_date')
+    value = CharField(source='media.value')
+    genres = GenreSerializer(source='media.genres', read_only=True, many=True)
+    countries = CountrySerializer(source='media.countries', read_only=True, many=True)
+
+    class Meta:
+        model = Movie
+        fields = ('name', 'genres', 'release_date', 'value', 'countries', 'id')
+
+
+class AdminTvSeriesSerializer(ModelSerializer):
+    name = CharField(source='media.name')
+    release_date = DateTimeField(source='media.release_date')
+    value = CharField(source='media.value')
+    genres = GenreSerializer(source='media.genres', read_only=True, many=True)
+    countries = CountrySerializer(source='media.countries', read_only=True, many=True)
+    episode_number = IntegerField()
+
+    class Meta:
+        model = TvSeries
+        fields = ('name', 'genres', 'release_date', 'value', 'countries', 'id', 'season_number', 'episode_number')
+
+
+class AdminCollectionSerializer(ModelSerializer):
+    owner = CharField(source="user.username")
+    can_edit = BooleanField()
+
+    class Meta:
+        model = Collection
+        exclude = ['media', 'is_private']
+
+    def get_can_edit(self, obj):
+        req = self.context.get('request')
+        return req.user == obj.user if req else False

@@ -18,13 +18,14 @@ from movie.models import Genre, Artist, Country, Movie, TvSeries, Season, Episod
 from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializer, CreateMovieSerializer, \
     MovieSerializer, CreateSerialSerializer, SerialSerializer, SeasonSerializer, EpisodeSerializer, \
     MediaGallerySerializer, SliderSerializer, CollectionSerializer, MediaInputSerializer, CommentSerializer, \
-    RatingSerializer, DashboardCommentSerializer, DashboardSliderSerializer
+    RatingSerializer, DashboardCommentSerializer, DashboardSliderSerializer, AdminMovieSerializer, \
+    AdminTvSeriesSerializer, AdminCollectionSerializer
 from plan.serializers import DashboardPlanSerializer
 from user.models import User
 from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers, \
     DashboardUserSerializer
 from django.template.loader import render_to_string
-from django.db.models import Q, Exists, OuterRef
+from django.db.models import Q, Exists, OuterRef, Case, When, Value, BooleanField
 from plan.models import Subscription, Plan
 from django.db.models import Count
 
@@ -609,3 +610,69 @@ class DashboardViewSet(GenericViewSet):
         advertise = Advertise.objects.annotate(view_number=Count("advertiseseen")).order_by("-created_at").all()[:10]
         advertise_serializer = DashboardAdvertiseSerializer(advertise, many=True)
         return Response(advertise_serializer.data)
+
+
+class AdminMediaViewSet(GenericViewSet):
+    permission_classes = [IsSuperUser]
+
+    @action(methods=['get'], detail=False, url_name='movie', url_path='movie')
+    def movie(self, request, *args, **kwargs):
+        movies = Movie.objects.select_related('media')
+        queryset = self.filter_queryset(movies)
+        page = self.paginate_queryset(queryset)
+        serializer = AdminMovieSerializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
+
+    @action(methods=['get'], detail=False, url_name='series', url_path='series')
+    def series(self, request, *args, **kwargs):
+        series = TvSeries.objects.annotate(episode_number=Count("season__episode")).select_related('media')
+        queryset = self.filter_queryset(series)
+        page = self.paginate_queryset(queryset)
+        serializer = AdminTvSeriesSerializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
+
+    @action(methods=['get'], detail=False, url_name='genre', url_path='genre')
+    def genre(self, request, *args, **kwargs):
+        genres = Genre.objects.filter()
+        queryset = self.filter_queryset(genres)
+        page = self.paginate_queryset(queryset)
+        serializer = GenreSerializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
+
+    @action(methods=['get'], detail=False, url_name='country', url_path='country')
+    def country(self, request, *args, **kwargs):
+        countries = Country.objects.filter()
+        queryset = self.filter_queryset(countries)
+        page = self.paginate_queryset(queryset)
+        serializer = CountrySerializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
+
+    @action(methods=['get'], detail=False, url_name='artist', url_path='artist')
+    def artist(self, request, *args, **kwargs):
+        artists = Artist.objects.filter()
+        queryset = self.filter_queryset(artists)
+        page = self.paginate_queryset(queryset)
+        serializer = ArtistSerializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
+
+    @action(methods=['get'], detail=False, url_name='slider', url_path='slider')
+    def slider(self, request, *args, **kwargs):
+        sliders = Slider.objects.filter()
+        queryset = self.filter_queryset(sliders)
+        page = self.paginate_queryset(queryset)
+        serializer = DashboardSliderSerializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
+
+    @action(methods=['get'], detail=False, url_name='collection', url_path='collection')
+    def collection(self, request, *args, **kwargs):
+        collections = Collection.objects.annotate(
+            can_edit=Case(
+                When(
+                    user=request.user, then=Value(True)),
+                default=Value(False), output_field=BooleanField()
+            )
+        ).order_by('-can_edit')
+        queryset = self.filter_queryset(collections)
+        page = self.paginate_queryset(queryset)
+        serializer = AdminCollectionSerializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
