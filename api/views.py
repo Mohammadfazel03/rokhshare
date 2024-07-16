@@ -3,7 +3,7 @@ from django.contrib.sites.shortcuts import get_current_site
 from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
-from rest_framework import status, mixins
+from rest_framework import status, mixins, filters
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -67,7 +67,7 @@ class AuthViewSet(ViewSet):
 class GenreViewSet(ModelViewSet):
     permission_classes = [IsSuperUser]
     serializer_class = GenreSerializer
-    queryset = Genre.objects.all()
+    queryset = Genre.objects.filter().order_by('-pk')
 
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
@@ -88,7 +88,9 @@ class GenreViewSet(ModelViewSet):
 class CountryViewSet(ModelViewSet):
     permission_classes = [IsSuperUser]
     serializer_class = CountrySerializer
-    queryset = Country.objects.all()
+    queryset = Country.objects.filter().order_by('-pk')
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['name', 'id']
 
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
@@ -109,7 +111,9 @@ class CountryViewSet(ModelViewSet):
 class ArtistViewSet(ModelViewSet):
     permission_classes = [IsSuperUser]
     serializer_class = ArtistSerializer
-    queryset = Artist.objects.all()
+    queryset = Artist.objects.filter().order_by('-pk')
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['name', 'id']
 
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
@@ -617,7 +621,7 @@ class AdminMediaViewSet(GenericViewSet):
 
     @action(methods=['get'], detail=False, url_name='movie', url_path='movie')
     def movie(self, request, *args, **kwargs):
-        movies = Movie.objects.select_related('media')
+        movies = Movie.objects.select_related('media').order_by('-pk')
         queryset = self.filter_queryset(movies)
         page = self.paginate_queryset(queryset)
         serializer = AdminMovieSerializer(page, many=True)
@@ -625,7 +629,8 @@ class AdminMediaViewSet(GenericViewSet):
 
     @action(methods=['get'], detail=False, url_name='series', url_path='series')
     def series(self, request, *args, **kwargs):
-        series = TvSeries.objects.annotate(episode_number=Count("season__episode")).select_related('media')
+        series = TvSeries.objects.annotate(episode_number=Count("season__episode")).select_related('media').order_by(
+            '-pk')
         queryset = self.filter_queryset(series)
         page = self.paginate_queryset(queryset)
         serializer = AdminTvSeriesSerializer(page, many=True)
@@ -635,21 +640,19 @@ class AdminMediaViewSet(GenericViewSet):
     def genre(self, request, *args, **kwargs):
         genres = Genre.objects.filter()
         queryset = self.filter_queryset(genres)
-        page = self.paginate_queryset(queryset)
-        serializer = GenreSerializer(page, many=True)
-        return self.get_paginated_response(serializer.data)
+        serializer = GenreSerializer(queryset, many=True)
+        return Response(serializer.data)
 
     @action(methods=['get'], detail=False, url_name='country', url_path='country')
     def country(self, request, *args, **kwargs):
         countries = Country.objects.filter()
         queryset = self.filter_queryset(countries)
-        page = self.paginate_queryset(queryset)
-        serializer = CountrySerializer(page, many=True)
-        return self.get_paginated_response(serializer.data)
+        serializer = CountrySerializer(queryset, many=True)
+        return Response(serializer.data)
 
     @action(methods=['get'], detail=False, url_name='artist', url_path='artist')
     def artist(self, request, *args, **kwargs):
-        artists = Artist.objects.filter()
+        artists = Artist.objects.filter().order_by("-pk")
         queryset = self.filter_queryset(artists)
         page = self.paginate_queryset(queryset)
         serializer = ArtistSerializer(page, many=True)
@@ -657,7 +660,7 @@ class AdminMediaViewSet(GenericViewSet):
 
     @action(methods=['get'], detail=False, url_name='slider', url_path='slider')
     def slider(self, request, *args, **kwargs):
-        sliders = Slider.objects.filter()
+        sliders = Slider.objects.filter().order_by("-pk")
         queryset = self.filter_queryset(sliders)
         page = self.paginate_queryset(queryset)
         serializer = DashboardSliderSerializer(page, many=True)
