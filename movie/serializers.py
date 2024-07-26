@@ -5,7 +5,7 @@ from django.db import transaction
 from rest_framework.validators import UniqueValidator
 
 from movie.models import Genre, Country, Artist, Media, Movie, Cast, GenreMedia, CountryMedia, TvSeries, Season, \
-    Episode, MediaGallery, Slider, Collection, Comment, Rating
+    Episode, MediaGallery, Slider, Collection, Comment, Rating, MediaFile
 from user.models import User
 
 
@@ -483,3 +483,9 @@ class AdminCollectionSerializer(ModelSerializer):
     def get_can_edit(self, obj):
         req = self.context.get('request')
         return req.user == obj.user if req else False
+
+
+class MediaFileSerializer(ModelSerializer):
+    class Meta:
+        model = MediaFile
+        fields = ('file', 'uploaded_on')

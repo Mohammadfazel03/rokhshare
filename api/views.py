@@ -5,21 +5,23 @@ from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from rest_framework import status, mixins, filters
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, NotFound
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework.viewsets import ViewSet, ModelViewSet, GenericViewSet
 from django.core.mail import EmailMessage
 from advertise.models import AdvertiseSeen, Advertise
 from advertise.serializers import DashboardAdvertiseSerializer
 from api.permissions import IsSuperUser, IsOwner
 from movie.models import Genre, Artist, Country, Movie, TvSeries, Season, Episode, MediaGallery, Slider, Collection, \
-    Media, Comment, Rating, SeenMedia
+    Media, Comment, Rating, SeenMedia, MediaFile
 from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializer, CreateMovieSerializer, \
     MovieSerializer, CreateSerialSerializer, SerialSerializer, SeasonSerializer, EpisodeSerializer, \
     MediaGallerySerializer, SliderSerializer, CollectionSerializer, MediaInputSerializer, CommentSerializer, \
     RatingSerializer, DashboardCommentSerializer, DashboardSliderSerializer, AdminMovieSerializer, \
-    AdminTvSeriesSerializer, AdminCollectionSerializer
+    AdminTvSeriesSerializer, AdminCollectionSerializer, MediaFileSerializer
 from plan.serializers import DashboardPlanSerializer
 from user.models import User
 from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers, \
@@ -679,3 +681,60 @@ class AdminMediaViewSet(GenericViewSet):
         page = self.paginate_queryset(queryset)
         serializer = AdminCollectionSerializer(page, many=True)
         return self.get_paginated_response(serializer.data)
+
+
+class MediaUploaderView(APIView):
+    parser_classes = (MultiPartParser, FormParser)
+    permission_classes = [IsSuperUser]
+
+    def post(self, request, *args, **kwargs):
+        file_obj = request.data.get("file", None)
+        chunk_index = int(request.data.get("chunk_index", 0))
+        upload_id = request.data.get("id", None)
+        total_chunk = request.data.get("total_chunk", None)
+
+        if file_obj is None:
+            raise ValidationError({"file": ["This field is required."]})
+
+        if total_chunk is None:
+            raise ValidationError({"file": ["This field is required."]})
+
+        total_chunk = int(total_chunk)
+
+        if chunk_index + 1 > total_chunk:
+            raise ValidationError("chunk index must be less than total chunk")
+
+        if upload_id is not None:
+            try:
+                media_file = MediaFile.objects.get(upload_id=upload_id, user=request.user, total_chunk=total_chunk,
+                                                   is_complete=False)
+
+                if media_file.is_expire():
+                    return Response(status=status.HTTP_410_GONE)
+
+                if chunk_index != media_file.chunks_uploaded + 1:
+                    return Response({"upload_id": media_file.upload_id, "chunk_index": media_file.chunks_uploaded + 1},
+                                    status=status.HTTP_200_OK)
+
+                file_path = media_file.file.path
+                with open(file_path, 'ab') as f:
+                    f.write(file_obj.read())
+
+                media_file.chunks_uploaded = chunk_index
+                media_file.save()
+
+            except MediaFile.DoesNotExist:
+                raise NotFound("file is not exist")
+        else:
+            if chunk_index != 0:
+                raise ValidationError({"chunk_index": ["This field must be 0."]})
+            media_file = MediaFile.objects.create(user=request.user, file=file_obj, total_chunk=total_chunk)
+
+        if total_chunk == chunk_index + 1:
+            media_file.is_complete = True
+            media_file.save()
+            return Response({"id": media_file.pk, "upload_id": media_file.upload_id, "is_complete": True},
+                            status=status.HTTP_201_CREATED)
+
+        return Response({"upload_id": media_file.upload_id, "chunk_index": media_file.chunks_uploaded + 1},
+                        status=status.HTTP_200_OK)

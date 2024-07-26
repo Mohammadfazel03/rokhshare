@@ -1,4 +1,8 @@
+import uuid
+from datetime import timedelta
+
 from django.db.models import *
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from user.models import User
@@ -191,3 +195,32 @@ class SeenMedia(Model):
 class CollectionMedia(Model):
     collection = ForeignKey(Collection, on_delete=CASCADE)
     media = ForeignKey(Media, on_delete=CASCADE)
+
+
+def generate_upload_id():
+    return uuid.uuid4().hex
+
+
+def media_file_filename(instance, filename):
+    return f"{get_random_string(length=24)}-{filename}"
+
+
+class MediaFile(Model):
+    upload_id = CharField(max_length=32, unique=True, editable=False,
+                          default=generate_upload_id)
+    user = ForeignKey(User, on_delete=DO_NOTHING, blank=False, null=False)
+    file = FileField(upload_to=media_file_filename)
+    uploaded_on = DateTimeField(auto_now_add=True)
+    chunks_uploaded = IntegerField(default=0)
+    is_complete = BooleanField(default=False)
+    total_chunk = IntegerField(null=False, blank=False)
+
+    def delete(self, delete_file=True, *args, **kwargs):
+        if self.file:
+            storage, path = self.file.storage, self.file.path
+        super(MediaFile, self).delete(*args, **kwargs)
+        if self.file and delete_file:
+            storage.delete(path)
+
+    def is_expire(self):
+        return not self.is_complete and timedelta(hours=12) + self.uploaded_on < timezone.now()
