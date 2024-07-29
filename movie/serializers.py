@@ -1,5 +1,4 @@
 from django.db.models import Avg
-from rest_framework import fields
 from rest_framework.serializers import *
 from django.db import transaction
 from rest_framework.validators import UniqueValidator
@@ -65,6 +64,20 @@ class ArtistSerializer(ModelSerializer):
         fields = "__all__"
 
 
+class MediaFileSerializer(ModelSerializer):
+    class Meta:
+        model = MediaFile
+        fields = ['file', 'id']
+
+
+class CastSerializer(ModelSerializer):
+    artist = ArtistSerializer(read_only=True, many=False)
+
+    class Meta:
+        model = Cast
+        fields = ('artist', 'position')
+
+
 def cast_validator(value):
     if type(value) is not list:
         raise ValidationError()
@@ -76,34 +89,34 @@ def cast_validator(value):
         if 'artist_id' not in js or 'position' not in js:
             raise ValidationError()
 
+        if js['position'] not in Cast.CastPosition:
+            raise ValidationError()
+
         if not Artist.objects.filter(pk=js['artist_id']).exists():
             raise ValidationError()
 
 
-class CreateMovieSerializer(Serializer):
-    casts = fields.JSONField(read_only=False, validators=[cast_validator], required=False)
-    genres = PrimaryKeyRelatedField(many=True, read_only=False, required=False, queryset=Genre.objects.all())
-    countries = PrimaryKeyRelatedField(many=True, read_only=False, required=False, queryset=Country.objects.all())
-    release_date = fields.DateTimeField(input_formats=['%Y-%m-%dT%H:%M:%S.%fZ'], allow_null=False)
-    name = CharField(max_length=100, allow_null=False, allow_blank=False)
-    trailer = FileField(allow_null=False, allow_empty_file=False)
-    synopsis = fields.CharField(allow_null=False, allow_blank=False)
-    thumbnail = ImageField(allow_null=False, allow_empty_file=False)
-    poster = ImageField(allow_null=False, allow_empty_file=False)
-    value = ChoiceField(choices=['Free', 'Subscription', 'Advertising'], allow_null=False, allow_blank=False)
-    video = FileField(allow_empty_file=False, allow_null=False)
-    time = IntegerField(allow_null=False)
+class CreateMovieSerializer(ModelSerializer):
+    video = PrimaryKeyRelatedField(queryset=MediaFile.objects.filter(is_complete=True), many=False, allow_null=False,
+                                   write_only=True)
+    casts = JSONField(validators=[cast_validator], required=True, write_only=True)
+    time = IntegerField(required=True, write_only=True)
+    genres = PrimaryKeyRelatedField(queryset=Genre.objects.filter(), write_only=True, many=True, allow_null=False)
+    countries = PrimaryKeyRelatedField(queryset=Country.objects.filter(), write_only=True, many=True, allow_null=False)
+
+    class Meta:
+        model = Media
+        fields = "__all__"
 
     def create(self, validated_data):
+        casts = map(lambda c: Cast(position=c['position'], artist_id=c['artist_id']), validated_data['casts'])
         media = Media(release_date=validated_data['release_date'], name=validated_data['name'],
                       trailer=validated_data['trailer'], synopsis=validated_data['synopsis'],
                       thumbnail=validated_data['thumbnail'], poster=validated_data['poster'],
                       value=validated_data['value'])
-        movie = Movie(video=validated_data['video'], time=validated_data['time'])
-        casts = map(lambda c: Cast(position=c['position'], artist_id=c['artist_id']), validated_data['casts'])
         genres = map(lambda g: GenreMedia(genre=g), validated_data['genres'])
-        countries = map(lambda g: CountryMedia(country=g), validated_data['countries'])
-
+        countries = map(lambda c: CountryMedia(country=c), validated_data['countries'])
+        movie = Movie(video=validated_data['video'], time=validated_data['time'])
         with transaction.atomic():
             media.save()
             movie.media = media
@@ -120,79 +133,79 @@ class CreateMovieSerializer(Serializer):
                 country.media = media
                 country.save()
 
-        return validated_data
+        return media
 
     def update(self, instance, validated_data):
+        old_values = {}
 
-        if validated_data.get("release_date", None):
-            instance.media.release_date = validated_data['release_date']
+        raise_errors_on_nested_writes('update', self, validated_data)
+        info = model_meta.get_field_info(instance)
 
-        if validated_data.get("name", None):
-            instance.media.name = validated_data['name']
+        m2m_fields = []
+        for attr, value in validated_data.items():
+            if attr in info.relations and info.relations[attr].to_many:
+                m2m_fields.append((attr, value))
+            else:
+                if attr in ('thumbnail', 'trailer', 'poster'):
+                    old_values[attr] = getattr(instance, attr, None)
 
-        if validated_data.get("trailer", None):
-            instance.media.trailer = validated_data['trailer']
-
-        if validated_data.get("synopsis", None):
-            instance.media.synopsis = validated_data['synopsis']
-
-        if validated_data.get("thumbnail", None):
-            instance.media.thumbnail = validated_data['thumbnail']
-
-        if validated_data.get("poster", None):
-            instance.media.poster = validated_data['poster']
-
-        if validated_data.get("value", None):
-            instance.media.value = validated_data['value']
+                setattr(instance, attr, value)
 
         if validated_data.get("video", None):
-            instance.video = validated_data['video']
+            if instance.movie.video != validated_data['video']:
+                old_values['video'] = instance.movie.video
+                instance.movie.video = validated_data['video']
 
         if validated_data.get("time", None):
-            instance.time = validated_data['time']
+            instance.movie.time = validated_data['time']
 
         with transaction.atomic():
-            if validated_data.get('genres', None):
-                instance.media.genres.clear()
-                for genre in validated_data.get('genres', []):
-                    GenreMedia(genre=genre, media=instance.media).save()
-
-            if validated_data.get('countries', None):
-                instance.media.countries.clear()
-                for country in validated_data.get('countries', []):
-                    CountryMedia(country=country, media=instance.media).save()
-
             if validated_data.get('casts', None):
-                instance.casts.clear()
-                for cast in validated_data.get('casts', []):
-                    Cast(artist_id=cast['artist_id'], position=cast['position'], movie_id=instance.id).save()
-
-            instance.media.save()
+                if len(validated_data.get('casts', None)) > 0:
+                    instance.movie.casts.clear()
+                    for cast in validated_data.get('casts', []):
+                        Cast(artist_id=cast['artist_id'], position=cast['position'], movie_id=instance.movie.id).save()
             instance.save()
 
-        return CreateMovieSerializer()
+            for attr, value in m2m_fields:
+                field = getattr(instance, attr)
+                field.set(value)
+
+            instance.movie.save()
+
+        for attr, item in old_values.items():
+            if attr in ('poster', 'thumbnail'):
+                item.delete(save=False)
+            else:
+                item.delete()
+
+        return instance
+
+    def to_representation(self, instance):
+        representation_serializer = MovieSerializer(instance=instance.movie)
+        return representation_serializer.data
 
 
 class MediaSerializer(ModelSerializer):
     genres = GenreSerializer(read_only=True, many=True)
     countries = CountrySerializer(read_only=True, many=True)
+    trailer = MediaFileSerializer(read_only=True)
 
     class Meta:
         model = Media
         fields = "__all__"
-        lookup_field = "id"
 
 
 class MovieSerializer(ModelSerializer):
     media = MediaSerializer(read_only=True)
-    casts = ArtistSerializer(read_only=True, many=True)
+    casts = CastSerializer(source='cast_set', read_only=True, many=True)
     rating = SerializerMethodField(read_only=True)
     comments = SerializerMethodField(read_only=True)
+    video = MediaFileSerializer(read_only=True)
 
     class Meta:
         model = Movie
         fields = "__all__"
-        lookup_field = "media__id"
 
     @staticmethod
     def get_rating(obj):

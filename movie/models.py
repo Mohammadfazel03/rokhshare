@@ -29,7 +29,7 @@ class Media(Model):
         ADVERTISING = "Advertising", _("Advertising")
 
     name = CharField(max_length=100)
-    trailer = FileField(upload_to=trailer_path_file)
+    trailer = OneToOneField('MediaFile', on_delete=CASCADE)
     synopsis = TextField()
     thumbnail = ImageField(upload_to=media_thumbnail_path_file)
     poster = ImageField(upload_to=media_poster_path_file)
@@ -38,20 +38,30 @@ class Media(Model):
     genres = ManyToManyField('Genre', through='GenreMedia')
     countries = ManyToManyField('Country', through='CountryMedia')
 
+    def delete(self, *args, **kwargs):
+        super().delete(*args, **kwargs)
+        if self.trailer:
+            self.trailer.delete()
+        self.poster.delete(save=False)
+        self.thumbnail.delete(save=False)
+
 
 def movie_path_file(instance, filename):
     return f"movie-video/{instance.media.pk}-{instance.media.name}-{filename}"
 
 
 class Movie(Model):
-    media = ForeignKey(Media, on_delete=CASCADE)
-    video = FileField(upload_to=movie_path_file)
+    media = OneToOneField(Media, on_delete=CASCADE)
+    video = OneToOneField('MediaFile', on_delete=CASCADE)
     time = IntegerField()
     casts = ManyToManyField('Artist', through='Cast')
 
-    @property
-    def media__id(self):
-        return self.media.id
+    def delete(self, *args, **kwargs):
+        if self.media:
+            self.media.delete()
+        if self.video:
+            self.video.delete()
+        super().delete(*args, **kwargs)
 
 
 class TvSeries(Model):
@@ -130,8 +140,8 @@ class Artist(Model):
 
 class Cast(Model):
     class CastPosition(TextChoices):
-        OTHER = "Free", _("Free")
-        ACTOR = "Subscription", _("Subscription")
+        OTHER = "Other", _("Other")
+        ACTOR = "Actor", _("Actor")
         DIRECTOR = "Director", _("Director")
         PRODUCER = "Producer", _("Producer")
         WRITER = "Writer", _("Writer")
@@ -215,11 +225,10 @@ class MediaFile(Model):
     is_complete = BooleanField(default=False)
     total_chunk = IntegerField(null=False, blank=False)
 
-    def delete(self, delete_file=True, *args, **kwargs):
+    def delete(self, *args, **kwargs):
+        super(MediaFile, self).delete(*args, **kwargs)
         if self.file:
             storage, path = self.file.storage, self.file.path
-        super(MediaFile, self).delete(*args, **kwargs)
-        if self.file and delete_file:
             storage.delete(path)
 
     def is_expire(self):

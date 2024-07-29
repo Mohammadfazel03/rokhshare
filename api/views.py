@@ -1,3 +1,4 @@
+import hashlib
 from datetime import timedelta
 from django.contrib.sites.shortcuts import get_current_site
 from django.utils import timezone
@@ -135,45 +136,24 @@ class ArtistViewSet(ModelViewSet):
 
 class MovieViewSet(ModelViewSet):
     permission_classes = [IsSuperUser]
-    lookup_field = "media__id"
+    lookup_field = "pk"
 
     def get_serializer_class(self):
         if self.action in ['create', 'partial_update']:
             return CreateMovieSerializer
-        elif self.action in ['retrieve', 'list', 'destroy']:
+        elif self.action in ['retrieve', 'list']:
             return MovieSerializer
 
     def get_queryset(self):
-        if self.action in ['retrieve', 'list', 'destroy', 'partial_update']:
-            return Movie.objects.all().select_related("media")
+        if self.action in ['retrieve', 'list', 'partial_update']:
+            return Movie.objects.filter().select_related("media").order_by('-pk')
+        elif self.action in ['destroy']:
+            return Movie.objects.filter()
 
-    def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
-
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        instance = instance.media
-        self.perform_destroy(instance)
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-    def partial_update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-
-        if getattr(instance, '_prefetched_objects_cache', None):
-            # If 'prefetch_related' has been applied to a queryset, we need to
-            # forcibly invalidate the prefetch cache on the instance.
-            instance._prefetched_objects_cache = {}
-
-        return Response({"message": "ok"})
+    def get_object(self):
+        if self.action in ['partial_update']:
+            return super().get_object().media
+        return super().get_object()
 
 
 class SeriesViewSet(ModelViewSet):
