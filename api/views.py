@@ -20,9 +20,10 @@ from movie.models import Genre, Artist, Country, Movie, TvSeries, Season, Episod
     Media, Comment, Rating, SeenMedia, MediaFile
 from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializer, CreateMovieSerializer, \
     MovieSerializer, CreateSerialSerializer, SerialSerializer, SeasonSerializer, EpisodeSerializer, \
-    MediaGallerySerializer, SliderSerializer, CollectionSerializer, MediaInputSerializer, CommentSerializer, \
+    MediaGallerySerializer, SliderSerializer, CollectionSerializer, MediaInputSerializer, CreateCommentSerializer, \
     RatingSerializer, DashboardCommentSerializer, DashboardSliderSerializer, AdminMovieSerializer, \
-    AdminTvSeriesSerializer, AdminCollectionSerializer, MediaFileSerializer
+    AdminTvSeriesSerializer, AdminCollectionSerializer, MediaFileSerializer, CommentSerializer, MyCommentSerializer, \
+    UpdateCommentSerializer
 from plan.serializers import DashboardPlanSerializer
 from user.models import User
 from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers, \
@@ -400,80 +401,62 @@ class CollectionViewSet(ModelViewSet):
         return Response(data={"message": "ok"}, status=status.HTTP_200_OK)
 
 
-class CommentViewSet(ModelViewSet):
-    serializer_class = CommentSerializer
+class CommentViewSet(mixins.CreateModelMixin,
+                     mixins.UpdateModelMixin,
+                     mixins.DestroyModelMixin,
+                     mixins.ListModelMixin,
+                     GenericViewSet):
+    queryset = Comment.objects.filter().order_by('-pk')
 
     def get_permissions(self):
-        if self.action == 'list':
+        if self.action == 'list' or self.action == 'confirm_comment' or self.action == 'media_comment':
             return [IsSuperUser()]
-        elif self.action == 'create':
+        elif self.action == 'create' or self.action == 'my_comment':
             return [IsAuthenticated()]
-        elif self.action == 'confirm_comment':
-            return [IsSuperUser()]
-        elif self.action == 'me_comment':
-            return [IsAuthenticated()]
+
         return [IsOwner()]
 
-    def get_queryset(self):
-        return Comment.objects.all()
+    def get_serializer_class(self):
+        if self.action == 'list' or self.action == 'media_comment':
+            return CommentSerializer
+        elif self.action == 'create':
+            return CreateCommentSerializer
+        elif self.action == 'my_comment':
+            return MyCommentSerializer
 
-    def create(self, request, *args, **kwargs):
-        request.data._mutable = True
-        request.data['user'] = request.user.id
-        request.data['is_confirm'] = request.user.is_superuser
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        return UpdateCommentSerializer
 
-    def update(self, request, *args, **kwargs):
-        request.data._mutable = True
-        instance = self.get_object()
-        request.data['user'] = request.user.id
-        request.data['is_confirm'] = request.user.is_superuser or instance.is_confirm
-        serializer = self.get_serializer(instance, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
+    @action(methods=['POST'], detail=True, url_path='state', url_name='state')
+    def change_state(self, request, pk):
+        state = request.data.get('state', None)
 
-        if getattr(instance, '_prefetched_objects_cache', None):
-            # If 'prefetch_related' has been applied to a queryset, we need to
-            # forcibly invalidate the prefetch cache on the instance.
-            instance._prefetched_objects_cache = {}
+        if state is None:
+            raise ValidationError(
+                {'state': 'This field is required'}
+            )
 
-        return Response(serializer.data)
+        try:
+            if int(state) not in Comment.CommentState:
+                raise ValidationError(
+                    {'state': f'{state} is not a valid choice.'}
+                )
+        except (TypeError, ValueError):
+            raise ValidationError(
+                {'state': f'{state} is not a valid choice.'}
+            )
 
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
+        comment = self.get_object()
 
-    def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        comment.state = state
+        comment.save()
 
-    @action(methods=['POST'], detail=True, url_path='confirm', url_name='confirm')
-    def confirm_comment(self, request, pk):
-        confirm = request.data.get('is_confirm', None)
-        if confirm is None:
-            raise ValidationError("confirm value is wrong")
+        return Response(data=UpdateCommentSerializer(instance=comment).data, status=status.HTTP_200_OK)
 
-        if confirm in ['true', 'True', 1]:
-            confirm = True
-        elif confirm in ['false', False, 0]:
-            confirm = False
-        else:
-            raise ValidationError("expected bool but got string")
-
-        collection = self.get_object()
-
-        collection.is_confirm = confirm
-        collection.save()
-
-        return Response(data={"message": "ok"}, status=status.HTTP_200_OK)
-
-    @action(methods=['get'], detail=False, url_name='my_comment', url_path='me')
-    def me_comment(self, request):
-        queryset = Comment.objects.filter(user=request.user).order_by('created_at')
+    @action(methods=['get'], detail=False, url_name='my_comment', url_path='my')
+    def my_comment(self, request):
+        queryset = Comment.objects.filter(user=request.user).select_related('media').select_related('episode').order_by(
+            '-pk')
         queryset = self.filter_queryset(queryset)
-
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
@@ -481,6 +464,18 @@ class CommentViewSet(ModelViewSet):
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+    @action(methods=['get'], detail=False, url_name='media_comment', url_path='media/(?P<pk>[0-9]+)')
+    def media_comment(self, request, pk):
+        queryset = Comment.objects.filter(user=request.user, media__pk=pk).order_by('-pk')
+        queryset = self.filter_queryset(queryset)
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(pk)
 
 
 class RatingViewSet(GenericViewSet, mixins.CreateModelMixin, mixins.DestroyModelMixin):

@@ -3,7 +3,6 @@ from typing import Dict, Any
 from django.contrib.auth.models import update_last_login
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers, exceptions
-from rest_framework import validators
 from rest_framework.validators import UniqueValidator
 from django.db import transaction
 from rest_framework_simplejwt.serializers import TokenObtainSerializer
@@ -110,5 +109,18 @@ class DashboardUserSerializer(serializers.ModelSerializer):
         model = User
         fields = ('username', 'date_joined', 'is_premium', 'seen_movies', 'full_name')
 
-    def get_full_name(self, obj):
+    @staticmethod
+    def get_full_name(obj):
+        return '{} {}'.format(obj.first_name, obj.last_name)
+
+
+class CommentUserSerializer(serializers.ModelSerializer):
+    full_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = User
+        fields = ('id', 'full_name', 'username')
+
+    @staticmethod
+    def get_full_name(obj):
         return '{} {}'.format(obj.first_name, obj.last_name)

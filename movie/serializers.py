@@ -2,26 +2,87 @@ from django.db.models import Avg
 from rest_framework.serializers import *
 from django.db import transaction
 from rest_framework.validators import UniqueValidator
-
+from api.validators import MediaEpisodeValidator
 from movie.models import Genre, Country, Artist, Media, Movie, Cast, GenreMedia, CountryMedia, TvSeries, Season, \
     Episode, MediaGallery, Slider, Collection, Comment, Rating, MediaFile
 from user.models import User
+from user.serializers import CommentUserSerializer
 
 
-class CommentSerializer(ModelSerializer):
-    user = PrimaryKeyRelatedField(many=False, required=True, write_only=True, queryset=User.objects.all())
+class CreateCommentSerializer(ModelSerializer):
+    user = HiddenField(default=CurrentUserDefault())
 
     class Meta:
         model = Comment
-        fields = "__all__"
+        fields = ('id', 'user', 'media', 'episode', 'parent', 'title', 'comment')
+        validators = [
+            MediaEpisodeValidator()
+        ]
+        extra_kwargs = {
+            'media': {'write_only': True},
+            'episode': {'write_only': True},
+            'parent': {'write_only': True},
+        }
 
-    def is_valid(self, raise_exception=False):
-        res = super().is_valid(raise_exception=raise_exception)
-        if self.initial_data.get('media', None) is None and self.initial_data.get('episode', None) is None:
-            raise ValidationError("cant both media and episode be null")
-        elif self.initial_data.get('media', None) is not None and self.initial_data.get('episode', None) is not None:
-            raise ValidationError("cant both media and episode be fill")
-        return res
+    def validate(self, attrs):
+        if attrs.get('parent', None):
+            if attrs['parent'].media != attrs.get('media', None) \
+                    or attrs['parent'].episode != attrs.get('episode', None):
+                raise ValidationError("The replay comment is not correct")
+
+        return attrs
+
+
+class UpdateCommentSerializer(ModelSerializer):
+    state = ChoiceField(choices=Comment.CommentState)
+
+    class Meta:
+        model = Comment
+        fields = ('id', 'title', 'comment', 'state')
+
+    def update(self, instance, validated_data):
+        instance.state = Comment.CommentState.PENDING
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
+
+
+class CommentEpisodeSerializer(ModelSerializer):
+    season = SlugRelatedField(slug_field='number', read_only=True)
+
+    class Meta:
+        model = Episode
+        fields = ('id', 'number', 'name', 'season')
+        read_only_fields = ('number', 'name', 'season')
+
+
+class CommentMediaSerializer(ModelSerializer):
+    class Meta:
+        model = Media
+        fields = ('id', 'poster', 'name')
+        read_only_fields = ('poster', 'name')
+
+
+class CommentSerializer(ModelSerializer):
+    user = CommentUserSerializer()
+    episode = CommentEpisodeSerializer(read_only=True)
+
+    class Meta:
+        model = Comment
+        fields = ('id', 'user', 'comment', 'title', 'created_at', 'state', 'episode')
+        read_only_fields = ('user', 'comment', 'title', 'created_at', 'state', 'episode')
+
+
+class MyCommentSerializer(ModelSerializer):
+    parent = CommentSerializer(read_only=True)
+    media = CommentMediaSerializer(read_only=True)
+    episode = CommentEpisodeSerializer(read_only=True)
+
+    class Meta:
+        model = Comment
+        fields = ('id', 'comment', 'parent', 'title', 'created_at', 'state', 'media', 'episode')
+        read_only_fields = ('comment', 'parent', 'title', 'created_at', 'state', 'media', 'episode')
 
 
 class DashboardCommentMediaSerializer(ModelSerializer):
@@ -36,7 +97,7 @@ class DashboardCommentSerializer(ModelSerializer):
 
     class Meta:
         model = Comment
-        fields = ('comment', 'created_at', "is_confirm", "username", "media")
+        fields = ('comment', 'created_at', "state", "username", "media")
 
     def to_representation(self, instance):
         if instance.media is None:
@@ -213,8 +274,8 @@ class MovieSerializer(ModelSerializer):
 
     @staticmethod
     def get_comments(obj):
-        return CommentSerializer(Comment.objects.filter(media=obj.media, is_confirm=True).order_by('-created_at')[:5],
-                                 many=True).data
+        return CommentSerializer(Comment.objects.filter(media=obj.media, state=Comment.CommentState.ACCEPT)
+                                 .order_by('-created_at')[:5], many=True).data
 
 
 class CreateSerialSerializer(ModelSerializer):
@@ -303,8 +364,8 @@ class SerialSerializer(ModelSerializer):
 
     @staticmethod
     def get_comments(obj):
-        return CommentSerializer(Comment.objects.filter(media=obj.media, is_confirm=True).order_by('-created_at')[:5],
-                                 many=True).data
+        return CommentSerializer(Comment.objects.filter(media=obj.media, state=Comment.CommentState.ACCEPT)
+                                 .order_by('-created_at')[:5], many=True).data
 
 
 class SeasonSerializer(ModelSerializer):
@@ -362,8 +423,8 @@ class EpisodeSerializer(ModelSerializer):
 
     @staticmethod
     def get_comments(obj):
-        return CommentSerializer(Comment.objects.filter(episode=obj, is_confirm=True).order_by('-created_at')[:5],
-                                 many=True).data
+        return CommentSerializer(Comment.objects.filter(episode=obj, state=Comment.CommentState.ACCEPT)
+                                 .order_by('-created_at')[:5], many=True).data
 
 
 class MediaGallerySerializer(ModelSerializer):

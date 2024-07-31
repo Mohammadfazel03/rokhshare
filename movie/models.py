@@ -178,13 +178,19 @@ class Collection(Model):
 
 
 class Comment(Model):
-    user = ForeignKey(User, on_delete=CASCADE)
-    media = ForeignKey(Media, on_delete=CASCADE, null=True)
+    class CommentState(IntegerChoices):
+        PENDING = 0, _("Pending")
+        ACCEPT = 1, _("Accept")
+        REJECT = 2, _("Reject")
+
+    user = ForeignKey(User, on_delete=CASCADE, null=False)
+    media = ForeignKey(Media, on_delete=CASCADE, null=False)
     episode = ForeignKey(Episode, on_delete=CASCADE, null=True)
-    comment = TextField()
-    title = CharField(max_length=100)
-    created_at = DateTimeField(auto_now_add=True)
-    is_confirm = BooleanField(default=False)
+    parent = ForeignKey('self', on_delete=CASCADE, null=True, blank=True, related_name='answer')
+    comment = TextField(null=False)
+    title = CharField(max_length=100, null=False)
+    created_at = DateTimeField(auto_now_add=True, null=False)
+    state = SmallIntegerField(choices=CommentState.choices, default=CommentState.PENDING, null=False)
 
 
 class Rating(Model):
