@@ -65,8 +65,14 @@ class Movie(Model):
 
 
 class TvSeries(Model):
-    media = ForeignKey(Media, on_delete=CASCADE)
-    season_number = IntegerField()
+    media = OneToOneField(Media, on_delete=CASCADE)
+    season_number = IntegerField(default=0)
+    episode_number = IntegerField(default=0)
+
+    def delete(self, *args, **kwargs):
+        if self.media:
+            self.media.delete()
+        super().delete(*args, **kwargs)
 
 
 class Season(Model):

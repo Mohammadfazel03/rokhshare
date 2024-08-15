@@ -19,7 +19,7 @@ from api.permissions import IsSuperUser, IsOwner
 from movie.models import Genre, Artist, Country, Movie, TvSeries, Season, Episode, MediaGallery, Slider, Collection, \
     Media, Comment, Rating, SeenMedia, MediaFile
 from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializer, CreateMovieSerializer, \
-    MovieSerializer, CreateSerialSerializer, SerialSerializer, SeasonSerializer, EpisodeSerializer, \
+    MovieSerializer, SeriesSerializer, CreateSeriesSerializer, SeasonSerializer, EpisodeSerializer, \
     MediaGallerySerializer, SliderSerializer, CollectionSerializer, MediaInputSerializer, CreateCommentSerializer, \
     RatingSerializer, DashboardCommentSerializer, DashboardSliderSerializer, AdminMovieSerializer, \
     AdminTvSeriesSerializer, AdminCollectionSerializer, MediaFileSerializer, CommentSerializer, MyCommentSerializer, \
@@ -159,43 +159,33 @@ class MovieViewSet(ModelViewSet):
 
 class SeriesViewSet(ModelViewSet):
     permission_classes = [IsSuperUser]
-    lookup_field = "media__id"
+    lookup_field = "pk"
 
     def get_serializer_class(self):
         if self.action in ['create', 'partial_update']:
-            return CreateSerialSerializer
-        elif self.action in ['retrieve', 'list', 'destroy']:
-            return SerialSerializer
+            return CreateSeriesSerializer
+        elif self.action in ['retrieve', 'list']:
+            return SeriesSerializer
 
     def get_queryset(self):
-        if self.action in ['retrieve', 'list', 'destroy', 'partial_update']:
-            return TvSeries.objects.all().select_related("media")
+        if self.action in ['retrieve', 'list', 'partial_update']:
+            return TvSeries.objects.all().select_related("media").order_by('-pk')
+        elif self.action == 'season':
+            return TvSeries.objects.prefetch_related('season_set')
+        else:
+            return TvSeries.objects.filter()
 
-    def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
+    def get_object(self):
+        if self.action in ['partial_update']:
+            return super().get_object().media
+        return super().get_object()
 
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        instance = instance.media
-        self.perform_destroy(instance)
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-    def partial_update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-
-        if getattr(instance, '_prefetched_objects_cache', None):
-            instance._prefetched_objects_cache = {}
-
-        return Response({"message": "ok"})
+    @action(methods=['GET'], detail=True, url_path='season', url_name='season')
+    def season(self, request, pk):
+        queryset = self.get_object().season_set.annotate(episode_number=Count("episode")).filter().order_by("-number")
+        page = self.paginate_queryset(queryset)
+        serializer = SeasonSerializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
 
 
 class SeasonViewSet(ModelViewSet):
@@ -606,8 +596,7 @@ class AdminMediaViewSet(GenericViewSet):
 
     @action(methods=['get'], detail=False, url_name='series', url_path='series')
     def series(self, request, *args, **kwargs):
-        series = TvSeries.objects.annotate(episode_number=Count("season__episode")).select_related('media').order_by(
-            '-pk')
+        series = TvSeries.objects.select_related('media').order_by('-pk')
         queryset = self.filter_queryset(series)
         page = self.paginate_queryset(queryset)
         serializer = AdminTvSeriesSerializer(page, many=True)

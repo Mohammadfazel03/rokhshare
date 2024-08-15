@@ -278,76 +278,71 @@ class MovieSerializer(ModelSerializer):
                                  .order_by('-created_at')[:5], many=True).data
 
 
-class CreateSerialSerializer(ModelSerializer):
-    season_number = IntegerField(allow_null=False, write_only=True)
-    genres = PrimaryKeyRelatedField(many=True, read_only=False, required=False, queryset=Genre.objects.all())
-    countries = PrimaryKeyRelatedField(many=True, read_only=False, required=False, queryset=Country.objects.all())
+class CreateSeriesSerializer(ModelSerializer):
+    genres = PrimaryKeyRelatedField(queryset=Genre.objects.filter(), write_only=True, many=True, allow_null=False)
+    countries = PrimaryKeyRelatedField(queryset=Country.objects.filter(), write_only=True, many=True,
+                                       allow_null=False)
+    trailer = PrimaryKeyRelatedField(queryset=MediaFile.objects.filter(is_complete=True), many=False, allow_null=False,
+                                     write_only=True)
 
     class Meta:
         model = Media
         fields = "__all__"
-        lookup_field = "id"
 
     def create(self, validated_data):
+        genres = map(lambda g: GenreMedia(genre=g), validated_data.pop('genres'))
+        countries = map(lambda c: CountryMedia(country=c), validated_data.pop('countries'))
+
         with transaction.atomic():
-            genres = validated_data.pop("genres")
-            countries = validated_data.pop("countries")
-            season_number = validated_data.pop("season_number")
             media = Media.objects.create(**validated_data)
-            TvSeries.objects.create(media=media, season_number=season_number)
+            TvSeries.objects.create(media=media)
 
             for genre in genres:
-                GenreMedia.objects.create(genre=genre, media=media)
+                genre.media = media
+                genre.save()
 
             for country in countries:
-                CountryMedia.objects.create(country=country, media=media)
+                country.media = media
+                country.save()
 
         return media
 
     def update(self, instance, validated_data):
+        old_values = {}
 
-        if validated_data.get("release_date", None):
-            instance.media.release_date = validated_data['release_date']
+        raise_errors_on_nested_writes('update', self, validated_data)
+        info = model_meta.get_field_info(instance)
 
-        if validated_data.get("name", None):
-            instance.media.name = validated_data['name']
+        m2m_fields = []
+        for attr, value in validated_data.items():
+            if attr in info.relations and info.relations[attr].to_many:
+                m2m_fields.append((attr, value))
+            else:
+                if attr in ('thumbnail', 'trailer', 'poster'):
+                    old_values[attr] = getattr(instance, attr, None)
 
-        if validated_data.get("trailer", None):
-            instance.media.trailer = validated_data['trailer']
+                setattr(instance, attr, value)
 
-        if validated_data.get("synopsis", None):
-            instance.media.synopsis = validated_data['synopsis']
+        instance.save()
 
-        if validated_data.get("thumbnail", None):
-            instance.media.thumbnail = validated_data['thumbnail']
+        for attr, value in m2m_fields:
+            field = getattr(instance, attr)
+            field.set(value)
 
-        if validated_data.get("poster", None):
-            instance.media.poster = validated_data['poster']
+        for attr, item in old_values.items():
+            if attr in ('poster', 'thumbnail'):
+                item.delete(save=False)
+            else:
+                item.delete()
 
-        if validated_data.get("value", None):
-            instance.media.value = validated_data['value']
+        return instance
 
-        if validated_data.get("season_number", None):
-            instance.season_number = validated_data['season_number']
-
-        with transaction.atomic():
-            if validated_data.get('genres', None):
-                instance.media.genres.clear()
-                for genre in validated_data.get('genres', []):
-                    GenreMedia(genre=genre, media=instance.media).save()
-
-            if validated_data.get('countries', None):
-                instance.media.countries.clear()
-                for country in validated_data.get('countries', []):
-                    CountryMedia(country=country, media=instance.media).save()
-
-            instance.media.save()
-            instance.save()
-
-        return CreateMovieSerializer()
+    def to_representation(self, instance):
+        representation_serializer = SeriesSerializer(instance=instance.tvseries)
+        return representation_serializer.data
 
 
-class SerialSerializer(ModelSerializer):
+class SeriesSerializer(ModelSerializer):
     media = MediaSerializer(read_only=True)
     casts = ArtistSerializer(read_only=True, many=True)
     rating = SerializerMethodField(read_only=True)
@@ -356,11 +351,10 @@ class SerialSerializer(ModelSerializer):
     class Meta:
         model = TvSeries
         fields = "__all__"
-        lookup_field = "media__id"
 
     @staticmethod
     def get_rating(obj):
-        return Rating.objects.filter(media=obj.media).aggregate(Avg('rating'))['rating__avg']
+        return Rating.objects.filter(media=obj.media).aggregate(Avg('rating', default=0))['rating__avg']
 
     @staticmethod
     def get_comments(obj):
