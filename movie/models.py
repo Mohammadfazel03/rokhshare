@@ -75,9 +75,28 @@ class TvSeries(Model):
         super().delete(*args, **kwargs)
 
 
+def season_thumbnail_path_file(instance, filename):
+    return f"thumbnail/season/{get_random_string(length=8)}-{instance.name}-{filename}"
+
+
+def season_poster_path_file(instance, filename):
+    return f"poster/season/{get_random_string(length=8)}-{instance.name}-{filename}"
+
+
 class Season(Model):
     series = ForeignKey(TvSeries, on_delete=CASCADE)
     number = IntegerField()
+    name = CharField(max_length=255, null=True, blank=True)
+    thumbnail = ImageField(upload_to=season_thumbnail_path_file)
+    poster = ImageField(upload_to=season_poster_path_file)
+    publication_date = DateTimeField(null=False, blank=False)
+
+    def delete(self, *args, **kwargs):
+        super().delete(*args, **kwargs)
+        self.series.season_number -= 1
+        self.series.save()
+        self.poster.delete(save=False)
+        self.thumbnail.delete(save=False)
 
 
 def episode_path_file(instance, filename):

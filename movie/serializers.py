@@ -363,6 +363,8 @@ class SeriesSerializer(ModelSerializer):
 
 
 class SeasonSerializer(ModelSerializer):
+    episode_number = IntegerField(read_only=True, required=False)
+
     class Meta:
         model = Season
         fields = "__all__"
@@ -373,6 +375,37 @@ class SeasonSerializer(ModelSerializer):
             )
         ]
 
+    def create(self, validated_data):
+        with transaction.atomic():
+            instance = Season.objects.create(**validated_data)
+            instance.series.season_number += 1
+            instance.series.save()
+            return instance
+
+    def update(self, instance, validated_data):
+        old_values = {}
+
+        raise_errors_on_nested_writes('update', self, validated_data)
+        info = model_meta.get_field_info(instance)
+
+        m2m_fields = []
+        for attr, value in validated_data.items():
+            if attr in ('thumbnail', 'poster'):
+                old_values[attr] = getattr(instance, attr, None)
+
+            if value is not None and type(value) == str and len(value) == 0:
+                value = None
+            setattr(instance, attr, value)
+
+        instance.save()
+
+        for attr, item in old_values.items():
+            if attr in ('poster', 'thumbnail'):
+                item.delete(save=False)
+            else:
+                item.delete()
+
+        return instance
 
 class EpisodeSerializer(ModelSerializer):
     casts = ArtistSerializer(read_only=True, many=True)
