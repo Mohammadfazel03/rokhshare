@@ -407,10 +407,9 @@ class SeasonSerializer(ModelSerializer):
 
         return instance
 
-class EpisodeSerializer(ModelSerializer):
-    casts = ArtistSerializer(read_only=True, many=True)
-    rating = SerializerMethodField(read_only=True)
-    comments = SerializerMethodField(read_only=True)
+
+class CreateEpisodeSerializer(ModelSerializer):
+    casts = JSONField(validators=[cast_validator], required=True, write_only=True)
 
     class Meta:
         model = Episode
@@ -422,10 +421,6 @@ class EpisodeSerializer(ModelSerializer):
             )
         ]
 
-    @staticmethod
-    def get_rating(obj):
-        return Rating.objects.filter(episode=obj).aggregate(Avg('rating'))['rating__avg']
-
     def create(self, validated_data):
         casts = validated_data.pop('casts', [])
         with transaction.atomic():
@@ -433,20 +428,58 @@ class EpisodeSerializer(ModelSerializer):
             for cast in casts:
                 Cast(artist_id=cast['artist_id'], position=cast['position'], episode=instance).save()
 
-        return validated_data
-
-    def update(self, instance, validated_data):
-        casts = validated_data.pop('casts', [])
-
-        with transaction.atomic():
-            instance = super().update(instance, validated_data)
-
-            if len(casts) > 0:
-                instance.casts.clear()
-                for cast in casts:
-                    Cast(artist_id=cast['artist_id'], position=cast['position'], episode_id=instance.id).save()
+            series = instance.season.series
+            series.episode_number += 1
+            series.save()
 
         return instance
+
+    def update(self, instance, validated_data):
+        old_values = {}
+        raise_errors_on_nested_writes('update', self, validated_data)
+
+        for attr, value in validated_data.items():
+            if attr != 'season' and attr != 'casts':
+                if attr in ('thumbnail', 'video', 'poster', 'trailer'):
+                    old_values[attr] = getattr(instance, attr, None)
+
+                if value is not None and type(value) == str and len(value) == 0:
+                    value = None
+
+                setattr(instance, attr, value)
+
+        with transaction.atomic():
+            if validated_data.get('casts', None):
+                if len(validated_data.get('casts', None)) > 0:
+                    instance.casts.clear()
+                    for cast in validated_data.get('casts', []):
+                        Cast(artist_id=cast['artist_id'], position=cast['position'], episode=instance).save()
+            instance.save()
+
+        for attr, item in old_values.items():
+            if attr in ('poster', 'thumbnail'):
+                item.delete(save=False)
+            else:
+                item.delete()
+
+        return instance
+
+
+class EpisodeSerializer(ModelSerializer):
+    casts = ArtistSerializer(read_only=True, many=True)
+    rating = SerializerMethodField(read_only=True)
+    comments = SerializerMethodField(read_only=True)
+    comments_count = IntegerField(read_only=True, required=False)
+    trailer = MediaFileSerializer(read_only=True)
+    video = MediaFileSerializer(read_only=True)
+
+    class Meta:
+        model = Episode
+        fields = "__all__"
+
+    @staticmethod
+    def get_rating(obj):
+        return Rating.objects.filter(episode=obj).aggregate(Avg('rating', default=0))['rating__avg']
 
     @staticmethod
     def get_comments(obj):

@@ -105,14 +105,37 @@ def episode_path_file(instance, filename):
            f"-{instance.name}-{filename}"
 
 
+def episode_thumbnail_path_file(instance, filename):
+    return f"thumbnail/episode/{get_random_string(length=8)}-{instance.name}-{filename}"
+
+
+def episode_poster_path_file(instance, filename):
+    return f"poster/episode/{get_random_string(length=8)}-{instance.name}-{filename}"
+
+
 class Episode(Model):
     season = ForeignKey(Season, on_delete=CASCADE)
-    number = IntegerField()
-    name = CharField(max_length=100)
-    video = FileField(upload_to=episode_path_file)
+    number = IntegerField(null=False, blank=False)
+    name = CharField(max_length=100, null=True, blank=True)
+    video = OneToOneField('MediaFile', related_name='episode_video', on_delete=CASCADE, blank=False, null=False)
+    trailer = OneToOneField('MediaFile', related_name='episode_trailer', on_delete=CASCADE, blank=False, null=False)
     time = IntegerField()
-    synopsis = TextField()
+    synopsis = TextField(null=True, blank=True)
     casts = ManyToManyField('Artist', through='Cast')
+    thumbnail = ImageField(upload_to=episode_thumbnail_path_file)
+    poster = ImageField(upload_to=episode_poster_path_file)
+    publication_date = DateTimeField(null=False, blank=False)
+
+    def delete(self, *args, **kwargs):
+        super().delete(*args, **kwargs)
+        if self.trailer:
+            self.trailer.delete()
+        if self.video:
+            self.video.delete()
+        self.season.series.season_number -= 1
+        self.season.series.save()
+        self.poster.delete(save=False)
+        self.thumbnail.delete(save=False)
 
 
 def genre_poster_path_file(instance, filename):

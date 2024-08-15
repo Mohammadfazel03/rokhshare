@@ -23,7 +23,7 @@ from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializ
     MediaGallerySerializer, SliderSerializer, CollectionSerializer, MediaInputSerializer, CreateCommentSerializer, \
     RatingSerializer, DashboardCommentSerializer, DashboardSliderSerializer, AdminMovieSerializer, \
     AdminTvSeriesSerializer, AdminCollectionSerializer, MediaFileSerializer, CommentSerializer, MyCommentSerializer, \
-    UpdateCommentSerializer
+    UpdateCommentSerializer, CreateEpisodeSerializer
 from plan.serializers import DashboardPlanSerializer
 from user.models import User
 from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers, \
@@ -203,24 +203,13 @@ class SeasonViewSet(ModelViewSet):
 
 class EpisodeViewSet(ModelViewSet):
     permission_classes = [IsSuperUser]
-    serializer_class = EpisodeSerializer
     queryset = Episode.objects.all()
 
-    def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
-
-    def update(self, request, *args, **kwargs):
-        super().update(request, *args, **kwargs)
-        return Response({"message": "ok"}, status=status.HTTP_200_OK)
-
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
-    def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+    def get_serializer_class(self):
+        if self.action in ['create', 'partial_update']:
+            return CreateEpisodeSerializer
+        elif self.action in ['retrieve', 'list']:
+            return EpisodeSerializer
 
 
 class MediaGalleryViewSet(ModelViewSet):
@@ -399,7 +388,7 @@ class CommentViewSet(mixins.CreateModelMixin,
         return [IsOwner()]
 
     def get_serializer_class(self):
-        if self.action == 'list' or self.action == 'media_comment':
+        if self.action == 'list' or self.action == 'media_comment' or self.action == 'episode_comment':
             return CommentSerializer
         elif self.action == 'create':
             return CreateCommentSerializer
@@ -457,7 +446,19 @@ class CommentViewSet(mixins.CreateModelMixin,
             return self.get_paginated_response(serializer.data)
 
         serializer = self.get_serializer(queryset, many=True)
-        return Response(pk)
+        return Response(serializer)
+
+    @action(methods=['get'], detail=False, url_name='episode_comment', url_path='episode/(?P<pk>[0-9]+)')
+    def episode_comment(self, request, pk):
+        queryset = Comment.objects.filter(user=request.user, episode__pk=pk).order_by('-pk')
+        queryset = self.filter_queryset(queryset)
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer)
 
 
 class RatingViewSet(GenericViewSet, mixins.CreateModelMixin, mixins.DestroyModelMixin):
