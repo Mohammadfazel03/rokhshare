@@ -23,7 +23,7 @@ from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializ
     MediaGallerySerializer, SliderSerializer, CollectionSerializer, MediaInputSerializer, CreateCommentSerializer, \
     RatingSerializer, DashboardCommentSerializer, DashboardSliderSerializer, AdminMovieSerializer, \
     AdminTvSeriesSerializer, AdminCollectionSerializer, MediaFileSerializer, CommentSerializer, MyCommentSerializer, \
-    UpdateCommentSerializer, CreateEpisodeSerializer
+    UpdateCommentSerializer, CreateEpisodeSerializer, MediaSerializer
 from plan.serializers import DashboardPlanSerializer
 from user.models import User
 from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers, \
@@ -668,3 +668,11 @@ class MediaUploaderView(APIView):
 
         return Response({"upload_id": media_file.upload_id, "chunk_index": media_file.chunks_uploaded + 1},
                         status=status.HTTP_200_OK)
+
+
+class MediaViewSet(GenericViewSet, mixins.ListModelMixin):
+    permission_classes = [IsSuperUser]
+    serializer_class = MediaSerializer
+    queryset = Media.objects.filter().order_by('-pk')
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['name', 'id', 'synopsis']
