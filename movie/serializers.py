@@ -532,11 +532,12 @@ class SliderSerializer(ModelSerializer):
 
 
 class CollectionSerializer(ModelSerializer):
-    user = PrimaryKeyRelatedField(many=False, required=True, write_only=True, queryset=User.objects.all())
+    user = HiddenField(default=CurrentUserDefault())
 
     class Meta:
         model = Collection
         exclude = ['media']
+        read_only_fields = ('state', 'media')
 
 
 class MediaInputSerializer(Serializer):

@@ -216,13 +216,24 @@ def collection_poster_path_file(instance, filename):
 
 
 class Collection(Model):
+    class CollectionState(IntegerChoices):
+        PENDING = 0, _("Pending")
+        ACCEPT = 1, _("Accept")
+        REJECT = 2, _("Reject")
+
     user = ForeignKey(User, on_delete=CASCADE)
     name = CharField(max_length=100)
     created_at = DateTimeField(auto_now_add=True)
     is_private = BooleanField(default=False)
-    is_confirm = BooleanField(default=False)
+    state = SmallIntegerField(choices=CollectionState.choices, default=CollectionState.PENDING, null=False)
     poster = ImageField(upload_to=collection_poster_path_file)
     media = ManyToManyField(Media, through='CollectionMedia')
+    last_update = DateTimeField(auto_now=True)
+
+    def delete(self, using=None, keep_parents=False):
+        super().delete(using, keep_parents)
+        if self.poster:
+            self.poster.delete(save=False)
 
 
 class Comment(Model):
