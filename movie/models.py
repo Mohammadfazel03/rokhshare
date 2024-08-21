@@ -204,11 +204,26 @@ class Cast(Model):
     position = CharField(max_length=50, choices=CastPosition.choices, default=CastPosition.OTHER)
 
 
+def slider_thumbnail_path_file(instance, filename):
+    return f"thumbnail/slider/{get_random_string(length=8)}-{instance.media.name}-{filename}"
+
+
+def slider_poster_path_file(instance, filename):
+    return f"poster/slider/{get_random_string(length=8)}-{instance.media.name}-{filename}"
+
+
 class Slider(Model):
-    media = ForeignKey(Media, on_delete=CASCADE)
+    media = ForeignKey(Media, on_delete=CASCADE, null=False)
     description = TextField()
     title = CharField(max_length=250)
     priority = IntegerField()
+    thumbnail = ImageField(upload_to=slider_thumbnail_path_file)
+    poster = ImageField(upload_to=slider_poster_path_file)
+
+    def delete(self, *args, **kwargs):
+        super().delete(*args, **kwargs)
+        self.poster.delete(save=False)
+        self.thumbnail.delete(save=False)
 
 
 def collection_poster_path_file(instance, filename):

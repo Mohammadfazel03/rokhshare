@@ -23,7 +23,7 @@ from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializ
     MediaGallerySerializer, SliderSerializer, CollectionSerializer, MediaInputSerializer, CreateCommentSerializer, \
     RatingSerializer, DashboardCommentSerializer, DashboardSliderSerializer, AdminMovieSerializer, \
     AdminTvSeriesSerializer, AdminCollectionSerializer, MediaFileSerializer, CommentSerializer, MyCommentSerializer, \
-    UpdateCommentSerializer, CreateEpisodeSerializer, MediaSerializer
+    UpdateCommentSerializer, CreateEpisodeSerializer, MediaSerializer, CreateSliderSerializer
 from plan.serializers import DashboardPlanSerializer
 from user.models import User
 from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers, \
@@ -235,28 +235,23 @@ class MediaGalleryViewSet(ModelViewSet):
 
 
 class SliderViewSet(ModelViewSet):
-    serializer_class = SliderSerializer
-    queryset = Slider.objects.all()
+    http_method_names = ['get', 'post', 'patch', 'delete']
 
     def get_permissions(self):
         if self.action in ['retrieve', 'list']:
             return [AllowAny()]
         return [IsSuperUser()]
 
-    def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
+    def get_queryset(self):
+        if self.action in ['retrieve', 'list']:
+            return Slider.objects.select_related('media').prefetch_related('media__genres', 'media__countries')
+        return Slider.objects.filter()
 
-    def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
-
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
-    def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+    def get_serializer_class(self):
+        if self.action in ['create', 'partial_update']:
+            return CreateSliderSerializer
+        elif self.action in ['retrieve', 'list']:
+            return SliderSerializer
 
 
 class CollectionViewSet(ModelViewSet):

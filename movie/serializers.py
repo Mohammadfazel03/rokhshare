@@ -498,37 +498,32 @@ class MediaGallerySerializer(ModelSerializer):
         return super().is_valid(raise_exception=raise_exception)
 
 
-class SliderSerializer(ModelSerializer):
-    priority = IntegerField(validators=[UniqueValidator(queryset=Slider.objects.all())])
+class SliderMediaSerializer(ModelSerializer):
+    genres = GenreSerializer(read_only=True, many=True)
+    countries = CountrySerializer(read_only=True, many=True)
 
-    # media = MediaSerializer(read_only=True)
+    class Meta:
+        model = Media
+        exclude = ('trailer', 'casts')
+
+
+class SliderSerializer(ModelSerializer):
+    media = SliderMediaSerializer(read_only=True)
+
+    class Meta:
+        model = Slider
+        fields = "__all__"
+
+
+class CreateSliderSerializer(ModelSerializer):
+    priority = IntegerField(validators=[UniqueValidator(queryset=Slider.objects.all())])
 
     class Meta:
         model = Slider
         fields = "__all__"
 
     def to_representation(self, instance):
-        ret = OrderedDict()
-        fields = self._readable_fields
-
-        for field in fields:
-            try:
-                attribute = field.get_attribute(instance)
-            except SkipField:
-                continue
-
-            check_for_none = attribute.pk if isinstance(attribute, PKOnlyObject) else attribute
-            if check_for_none is None:
-                ret[field.field_name] = None
-            else:
-                if field.field_name == 'media':
-                    media = Media.objects.get(id=field.to_representation(attribute))
-                    media_serializer = MediaSerializer(media)
-                    ret[field.field_name] = media_serializer.to_representation(media_serializer.data)
-                else:
-                    ret[field.field_name] = field.to_representation(attribute)
-
-        return ret
+        return SliderSerializer(instance).data
 
 
 class CollectionSerializer(ModelSerializer):
