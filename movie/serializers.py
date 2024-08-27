@@ -1,11 +1,9 @@
-from django.db.models import Avg
 from rest_framework.serializers import *
 from django.db import transaction
 from rest_framework.validators import UniqueValidator
 from api.validators import MediaEpisodeValidator
-from movie.models import Genre, Country, Artist, Media, Movie, Cast, GenreMedia, CountryMedia, TvSeries, Season, \
+from movie.models import Genre, Country, Artist, Media, Movie, Cast, TvSeries, Season, \
     Episode, MediaGallery, Slider, Collection, Comment, Rating, MediaFile
-from user.models import User
 from user.serializers import CommentUserSerializer
 
 
@@ -415,9 +413,6 @@ class SeasonSerializer(ModelSerializer):
         old_values = {}
 
         raise_errors_on_nested_writes('update', self, validated_data)
-        info = model_meta.get_field_info(instance)
-
-        m2m_fields = []
         for attr, value in validated_data.items():
             if attr in ('thumbnail', 'poster'):
                 old_values[attr] = getattr(instance, attr, None)

@@ -21,12 +21,12 @@ from advertise.models import AdvertiseSeen, Advertise
 from advertise.serializers import DashboardAdvertiseSerializer
 from api.permissions import IsSuperUser, IsOwner, CollectionRetrievePermission
 from movie.models import Genre, Artist, Country, Movie, TvSeries, Season, Episode, MediaGallery, Slider, Collection, \
-    Media, Comment, Rating, SeenMedia, MediaFile
+    Media, Comment, Rating, SeenMedia, MediaFile, Cast
 from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializer, CreateMovieSerializer, \
     MovieSerializer, SeriesSerializer, CreateSeriesSerializer, SeasonSerializer, EpisodeSerializer, \
     MediaGallerySerializer, SliderSerializer, CollectionSerializer, MediaInputSerializer, CreateCommentSerializer, \
     RatingSerializer, DashboardCommentSerializer, DashboardSliderSerializer, AdminMovieSerializer, \
-    AdminTvSeriesSerializer, AdminCollectionSerializer, MediaFileSerializer, CommentSerializer, MyCommentSerializer, \
+    AdminTvSeriesSerializer, AdminCollectionSerializer, CommentSerializer, MyCommentSerializer, \
     UpdateCommentSerializer, CreateEpisodeSerializer, MediaSerializer, CreateSliderSerializer
 from plan.serializers import DashboardPlanSerializer
 from user.models import User
@@ -38,7 +38,6 @@ from plan.models import Subscription, Plan
 from django.db.models import Count
 
 
-# Create your views here.
 class AuthViewSet(ViewSet):
 
     @action(methods=['POST'], detail=False, permission_classes=[AllowAny])
@@ -77,21 +76,6 @@ class GenreViewSet(ModelViewSet):
     serializer_class = GenreSerializer
     queryset = Genre.objects.filter().order_by('-pk')
 
-    def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
-
-    def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
-
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
-    def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
-
 
 class CountryViewSet(ModelViewSet):
     permission_classes = [IsSuperUser]
@@ -100,21 +84,6 @@ class CountryViewSet(ModelViewSet):
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'id']
 
-    def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
-
-    def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
-
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
-    def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
-
 
 class ArtistViewSet(ModelViewSet):
     permission_classes = [IsSuperUser]
@@ -122,21 +91,6 @@ class ArtistViewSet(ModelViewSet):
     queryset = Artist.objects.filter().order_by('-pk')
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'id']
-
-    def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
-
-    def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
-
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
-    def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
 
 
 class MovieViewSet(ModelViewSet):
@@ -159,14 +113,14 @@ class MovieViewSet(ModelViewSet):
             return Movie.objects \
                 .select_related("media", "video", "media__trailer") \
                 .annotate(rating=Avg('media__rating__rating', default=0)) \
-                .prefetch_related(Prefetch("media__casts", queryset=Cast.objects.select_related('artist')
-                                           , to_attr='media_casts'), "media__countries", "media__genres"
-                                  , Prefetch("media__comment_set",
-                                             queryset=Comment.objects.filter(state=Comment.CommentState.ACCEPT)
-                                             .order_by('-created_at')[:5], to_attr='comments')
-                                  , Prefetch("media__mediagallery_set",
-                                             queryset=MediaGallery.objects.order_by('-pk')[:5],
-                                             to_attr='gallery')) \
+                .prefetch_related(Prefetch("media__casts", queryset=Cast.objects.select_related('artist'),
+                                           to_attr='media_casts'), "media__countries", "media__genres",
+                                  Prefetch("media__comment_set",
+                                           queryset=Comment.objects.filter(state=Comment.CommentState.ACCEPT)
+                                           .order_by('-created_at')[:5], to_attr='comments'),
+                                  Prefetch("media__mediagallery_set",
+                                           queryset=MediaGallery.objects.order_by('-pk')[:5],
+                                           to_attr='gallery')) \
                 .order_by('-pk')
 
     def get_object(self):
@@ -195,8 +149,8 @@ class SeriesViewSet(ModelViewSet):
             return TvSeries.objects.select_related("media", "media__trailer") \
                 .annotate(rating=Avg('media__rating__rating', default=0)) \
                 .prefetch_related(
-                Prefetch("media__casts", queryset=Cast.objects.select_related('artist').distinct('artist', 'position')
-                         , to_attr='media_casts'), "media__countries", "media__genres",
+                Prefetch("media__casts", queryset=Cast.objects.select_related('artist').distinct('artist', 'position'),
+                         to_attr='media_casts'), "media__countries", "media__genres",
                 Prefetch("media__comment_set",
                          queryset=Comment.objects.filter(state=Comment.CommentState.ACCEPT)
                          .order_by('-created_at')[:5], to_attr='comments'),
@@ -245,8 +199,8 @@ class EpisodeViewSet(ModelViewSet):
             return Episode.objects.select_related("video", "trailer") \
                 .annotate(rating_avg=Avg('rating', default=0)) \
                 .prefetch_related(
-                Prefetch("casts", queryset=Cast.objects.select_related('artist').distinct('artist', 'position')
-                         , to_attr='media_casts'),
+                Prefetch("casts", queryset=Cast.objects.select_related('artist').distinct('artist', 'position'),
+                         to_attr='media_casts'),
                 Prefetch("comment_set",
                          queryset=Comment.objects.filter(state=Comment.CommentState.ACCEPT)
                          .order_by('-created_at')[:5], to_attr='comments'),
@@ -328,7 +282,8 @@ class CollectionViewSet(ModelViewSet):
 
     def get_queryset(self):
         if self.action == 'list':
-            return Collection.objects.filter(state=Collection.CollectionState.ACCEPT, is_private=False).order_by('-last_update')
+            return Collection.objects.filter(state=Collection.CollectionState.ACCEPT, is_private=False).order_by(
+                '-last_update')
         elif self.action == 'media':
             return Collection.objects.prefetch_related('media').filter()
         return Collection.objects.filter()
