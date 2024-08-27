@@ -439,6 +439,8 @@ class SeasonSerializer(ModelSerializer):
 
 class CreateEpisodeSerializer(ModelSerializer):
     casts = JSONField(validators=[cast_validator], required=True, write_only=True)
+    video = PrimaryKeyRelatedField(queryset=MediaFile.objects.filter(is_complete=True), many=False, allow_null=False,
+                                   write_only=True)
 
     class Meta:
         model = Episode
@@ -500,25 +502,17 @@ class CreateEpisodeSerializer(ModelSerializer):
 
 
 class EpisodeSerializer(ModelSerializer):
-    casts = ArtistSerializer(read_only=True, many=True)
-    rating = SerializerMethodField(read_only=True)
-    comments = SerializerMethodField(read_only=True)
+    casts = CastSerializer(source="media_casts", read_only=True, many=True)
+    rating = FloatField(source='rating_avg', read_only=True)
+    comments = CommentSerializer(read_only=True, many=True)
     comments_count = IntegerField(read_only=True, required=False)
     trailer = MediaFileSerializer(read_only=True)
     video = MediaFileSerializer(read_only=True)
+    gallery = MediaGallerySerializer(read_only=True, many=True)
 
     class Meta:
         model = Episode
         fields = "__all__"
-
-    @staticmethod
-    def get_rating(obj):
-        return Rating.objects.filter(episode=obj).aggregate(Avg('rating', default=0))['rating__avg']
-
-    @staticmethod
-    def get_comments(obj):
-        return CommentSerializer(Comment.objects.filter(episode=obj, state=Comment.CommentState.ACCEPT)
-                                 .order_by('-created_at')[:5], many=True).data
 
 
 class SliderMediaSerializer(ModelSerializer):

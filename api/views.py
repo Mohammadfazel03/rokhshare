@@ -235,8 +235,28 @@ class SeasonViewSet(ModelViewSet):
 
 
 class EpisodeViewSet(ModelViewSet):
+    http_method_names = ['get', 'post', 'patch', 'delete']
     permission_classes = [IsSuperUser]
-    queryset = Episode.objects.all()
+
+    def get_queryset(self):
+        if self.action in ['partial_update']:
+            return Episode.objects.filter().order_by('-pk')
+        elif self.action in ['retrieve', 'list']:
+            return Episode.objects.select_related("video", "trailer") \
+                .annotate(rating_avg=Avg('rating', default=0)) \
+                .prefetch_related(
+                Prefetch("casts", queryset=Cast.objects.select_related('artist').distinct('artist', 'position')
+                         , to_attr='media_casts'),
+                Prefetch("comment_set",
+                         queryset=Comment.objects.filter(state=Comment.CommentState.ACCEPT)
+                         .order_by('-created_at')[:5], to_attr='comments'),
+                Prefetch("mediagallery_set",
+                         queryset=MediaGallery.objects.order_by('-pk')[:5],
+                         to_attr='gallery')) \
+                .order_by('-pk')
+
+        else:
+            return TvSeries.objects.filter()
 
     def get_serializer_class(self):
         if self.action in ['create', 'partial_update']:
