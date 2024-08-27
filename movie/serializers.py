@@ -488,14 +488,49 @@ class EpisodeSerializer(ModelSerializer):
 
 
 class MediaGallerySerializer(ModelSerializer):
+    file = PrimaryKeyRelatedField(queryset=MediaFile.objects.filter(is_complete=True),
+                                  validators=[UniqueValidator(queryset=MediaGallery.objects.filter())],
+                                  many=False, allow_null=False,
+                                  write_only=True)
+    media = IntegerField(required=False, write_only=True, allow_null=True)
+
     class Meta:
         model = MediaGallery
         fields = "__all__"
+        extra_kwargs = {
+            'episode': {'write_only': True},
+        }
 
-    def is_valid(self, raise_exception=False):
-        if not self.initial_data.get('movie', None) and not self.initial_data.get('episode', None):
-            raise ValidationError("cant both movie and episode be null")
-        return super().is_valid(raise_exception=raise_exception)
+    def validate(self, attrs):
+        episode = attrs.get('episode', None)
+        media = attrs.get('media', None)
+
+        if not media and not episode:
+            raise ValidationError(detail={
+                "media": ["at least one of media and episode must be set"],
+                "episode": ["at least one of media and episode must be set"]
+            })
+
+        if media and episode:
+            if media != Media.objects.get(tvseries__season__episode=episode):
+                raise ValidationError(detail="The fields episode, media are not compatible with each other.")
+
+        if not media and episode:
+            attrs['media'] = Media.objects.get(tvseries__season__episode=episode)
+
+        return attrs
+
+    @staticmethod
+    def validate_media(value):
+        if value:
+            media = Media.objects.get(pk=value)
+            return media
+        return None
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        ret['file'] = MediaFileSerializer(instance=instance.file, context=self.context).data
+        return ret
 
 
 class SliderMediaSerializer(ModelSerializer):

@@ -171,9 +171,15 @@ def gallery_path_file(instance, filename):
 
 
 class MediaGallery(Model):
-    file = FileField(upload_to=gallery_path_file)
-    movie = ForeignKey(Movie, on_delete=CASCADE, null=True)
+    file = OneToOneField('MediaFile', on_delete=CASCADE, null=False)
+    media = ForeignKey(Media, on_delete=CASCADE, null=False)
     episode = ForeignKey(Episode, on_delete=CASCADE, null=True)
+    description = CharField(max_length=255, null=True)
+
+    def delete(self, *args, **kwargs):
+        super().delete(*args, **kwargs)
+        if self.file:
+            self.file.delete()
 
 
 def artist_path_file(instance, filename):
