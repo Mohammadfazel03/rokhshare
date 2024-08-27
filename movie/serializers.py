@@ -150,10 +150,22 @@ def cast_validator(value):
         if 'artist_id' not in js or 'position' not in js:
             raise ValidationError()
 
+        artist = None
+
         if js['position'] not in Cast.CastPosition:
             raise ValidationError()
 
-        if not Artist.objects.filter(pk=js['artist_id']).exists():
+        if isinstance(js['artist_id'], str):
+            if str(js['artist_id']).isdigit():
+                artist = int(js['artist_id'])
+
+        if isinstance(js['artist_id'], int):
+            artist = js['artist_id']
+
+        if not artist:
+            raise ValidationError()
+
+        if not Artist.objects.filter(pk=artist).exists():
             raise ValidationError()
 
 
@@ -170,7 +182,7 @@ class CreateMovieSerializer(ModelSerializer):
         fields = "__all__"
 
     def create(self, validated_data):
-        casts = map(lambda c: Cast(position=c['position'], artist_id=c['artist_id']), validated_data['casts'])
+        casts = map(lambda c: Cast(position=c['position'], artist_id=int(c['artist_id'])), validated_data.pop('casts'))
         media = Media(release_date=validated_data['release_date'], name=validated_data['name'],
                       trailer=validated_data['trailer'], synopsis=validated_data['synopsis'],
                       thumbnail=validated_data['thumbnail'], poster=validated_data['poster'],
@@ -183,7 +195,7 @@ class CreateMovieSerializer(ModelSerializer):
             movie.media = media
             movie.save()
             for cast in casts:
-                cast.movie = movie
+                cast.media = media
                 cast.save()
 
             for genre in genres:
@@ -225,7 +237,7 @@ class CreateMovieSerializer(ModelSerializer):
                 if len(validated_data.get('casts', None)) > 0:
                     instance.movie.casts.clear()
                     for cast in validated_data.get('casts', []):
-                        Cast(artist_id=cast['artist_id'], position=cast['position'], movie_id=instance.movie.id).save()
+                        Cast(artist_id=cast['artist_id'], position=cast['position'], media=instance).save()
             instance.save()
 
             for attr, value in m2m_fields:
@@ -422,11 +434,14 @@ class CreateEpisodeSerializer(ModelSerializer):
         ]
 
     def create(self, validated_data):
-        casts = validated_data.pop('casts', [])
+        casts = map(lambda c: Cast(position=c['position'], artist_id=int(c['artist_id'])), validated_data.pop('casts'))
         with transaction.atomic():
             instance = Episode.objects.create(**validated_data)
+            media = Media.objects.get(tvseries__season=validated_data.get('season'))
             for cast in casts:
-                Cast(artist_id=cast['artist_id'], position=cast['position'], episode=instance).save()
+                cast.media = media
+                cast.episode = instance
+                cast.save()
 
             series = instance.season.series
             series.episode_number += 1
@@ -451,9 +466,11 @@ class CreateEpisodeSerializer(ModelSerializer):
         with transaction.atomic():
             if validated_data.get('casts', None):
                 if len(validated_data.get('casts', None)) > 0:
+                    media = Media.objects.get(tvseries__season__episode=instance)
                     instance.casts.clear()
                     for cast in validated_data.get('casts', []):
-                        Cast(artist_id=cast['artist_id'], position=cast['position'], episode=instance).save()
+                        Cast(artist_id=cast['artist_id'], position=cast['position'], episode=instance,
+                             media=media).save()
             instance.save()
 
         for attr, item in old_values.items():

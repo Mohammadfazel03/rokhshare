@@ -37,6 +37,7 @@ class Media(Model):
     release_date = DateTimeField()
     genres = ManyToManyField('Genre', through='GenreMedia')
     countries = ManyToManyField('Country', through='CountryMedia')
+    casts = ManyToManyField('Artist', through='Cast')
 
     def delete(self, *args, **kwargs):
         super().delete(*args, **kwargs)
@@ -54,7 +55,6 @@ class Movie(Model):
     media = OneToOneField(Media, on_delete=CASCADE)
     video = OneToOneField('MediaFile', on_delete=CASCADE)
     time = IntegerField()
-    casts = ManyToManyField('Artist', through='Cast')
 
     def delete(self, *args, **kwargs):
         if self.media:
@@ -204,7 +204,7 @@ class Cast(Model):
         PRODUCTION_MANAGER = "Production Manager", _("Production Manager")
         DIRECTOR_OF_FILMING_MANAGER = "Director Of Filming Manager", _("Production Manager")
 
-    movie = ForeignKey(Movie, on_delete=CASCADE, null=True)
+    media = ForeignKey(Media, on_delete=CASCADE, null=False)
     episode = ForeignKey(Episode, on_delete=CASCADE, null=True)
     artist = ForeignKey(Artist, on_delete=CASCADE, null=False)
     position = CharField(max_length=50, choices=CastPosition.choices, default=CastPosition.OTHER)
