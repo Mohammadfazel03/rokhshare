@@ -131,6 +131,52 @@ class MediaFileSerializer(ModelSerializer):
         fields = ['file', 'id', 'mimetype', 'thumbnail']
 
 
+class MediaGallerySerializer(ModelSerializer):
+    file = PrimaryKeyRelatedField(queryset=MediaFile.objects.filter(is_complete=True),
+                                  validators=[UniqueValidator(queryset=MediaGallery.objects.filter())],
+                                  many=False, allow_null=False,
+                                  write_only=True)
+    media = IntegerField(required=False, write_only=True, allow_null=True)
+
+    class Meta:
+        model = MediaGallery
+        fields = "__all__"
+        extra_kwargs = {
+            'episode': {'write_only': True},
+        }
+
+    def validate(self, attrs):
+        episode = attrs.get('episode', None)
+        media = attrs.get('media', None)
+
+        if not media and not episode:
+            raise ValidationError(detail={
+                "media": ["at least one of media and episode must be set"],
+                "episode": ["at least one of media and episode must be set"]
+            })
+
+        if media and episode:
+            if media != Media.objects.get(tvseries__season__episode=episode):
+                raise ValidationError(detail="The fields episode, media are not compatible with each other.")
+
+        if not media and episode:
+            attrs['media'] = Media.objects.get(tvseries__season__episode=episode)
+
+        return attrs
+
+    @staticmethod
+    def validate_media(value):
+        if value:
+            media = Media.objects.get(pk=value)
+            return media
+        return None
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        ret['file'] = MediaFileSerializer(instance=instance.file, context=self.context).data
+        return ret
+
+
 class CastSerializer(ModelSerializer):
     artist = ArtistSerializer(read_only=True, many=False)
 
@@ -183,28 +229,21 @@ class CreateMovieSerializer(ModelSerializer):
 
     def create(self, validated_data):
         casts = map(lambda c: Cast(position=c['position'], artist_id=int(c['artist_id'])), validated_data.pop('casts'))
-        media = Media(release_date=validated_data['release_date'], name=validated_data['name'],
-                      trailer=validated_data['trailer'], synopsis=validated_data['synopsis'],
-                      thumbnail=validated_data['thumbnail'], poster=validated_data['poster'],
-                      value=validated_data['value'])
-        genres = map(lambda g: GenreMedia(genre=g), validated_data['genres'])
-        countries = map(lambda c: CountryMedia(country=c), validated_data['countries'])
-        movie = Movie(video=validated_data['video'], time=validated_data['time'])
+        movie = Movie(video=validated_data.pop('video'), time=validated_data.pop('time'))
+        countries = validated_data.pop('countries')
+        genres = validated_data.pop('genres')
+        media = Media(**validated_data)
         with transaction.atomic():
             media.save()
             movie.media = media
             movie.save()
+
+            media.genres.set(genres)
+            media.countries.set(countries)
+
             for cast in casts:
                 cast.media = media
                 cast.save()
-
-            for genre in genres:
-                genre.media = media
-                genre.save()
-
-            for country in countries:
-                country.media = media
-                country.save()
 
         return media
 
@@ -266,28 +305,20 @@ class MediaSerializer(ModelSerializer):
 
     class Meta:
         model = Media
-        fields = "__all__"
+        exclude = ['casts']
 
 
 class MovieSerializer(ModelSerializer):
-    media = MediaSerializer(read_only=True)
-    casts = CastSerializer(source='cast_set', read_only=True, many=True)
-    rating = SerializerMethodField(read_only=True)
-    comments = SerializerMethodField(read_only=True)
+    media = MediaSerializer(read_only=True, allow_null=False)
+    rating = FloatField(read_only=True)
+    comments = CommentSerializer(read_only=True, many=True)
     video = MediaFileSerializer(read_only=True)
+    casts = CastSerializer(source="media.media_casts", read_only=True, many=True)
+    gallery = MediaGallerySerializer(read_only=True, many=True)
 
     class Meta:
         model = Movie
         fields = "__all__"
-
-    @staticmethod
-    def get_rating(obj):
-        return Rating.objects.filter(media=obj.media).aggregate(Avg('rating'))['rating__avg']
-
-    @staticmethod
-    def get_comments(obj):
-        return CommentSerializer(Comment.objects.filter(media=obj.media, state=Comment.CommentState.ACCEPT)
-                                 .order_by('-created_at')[:5], many=True).data
 
 
 class CreateSeriesSerializer(ModelSerializer):
@@ -302,20 +333,14 @@ class CreateSeriesSerializer(ModelSerializer):
         fields = "__all__"
 
     def create(self, validated_data):
-        genres = map(lambda g: GenreMedia(genre=g), validated_data.pop('genres'))
-        countries = map(lambda c: CountryMedia(country=c), validated_data.pop('countries'))
-
+        countries = validated_data.pop('countries')
+        genres = validated_data.pop('genres')
         with transaction.atomic():
             media = Media.objects.create(**validated_data)
             TvSeries.objects.create(media=media)
 
-            for genre in genres:
-                genre.media = media
-                genre.save()
-
-            for country in countries:
-                country.media = media
-                country.save()
+            media.genres.set(genres)
+            media.countries.set(countries)
 
         return media
 
@@ -502,52 +527,6 @@ class EpisodeSerializer(ModelSerializer):
     def get_comments(obj):
         return CommentSerializer(Comment.objects.filter(episode=obj, state=Comment.CommentState.ACCEPT)
                                  .order_by('-created_at')[:5], many=True).data
-
-
-class MediaGallerySerializer(ModelSerializer):
-    file = PrimaryKeyRelatedField(queryset=MediaFile.objects.filter(is_complete=True),
-                                  validators=[UniqueValidator(queryset=MediaGallery.objects.filter())],
-                                  many=False, allow_null=False,
-                                  write_only=True)
-    media = IntegerField(required=False, write_only=True, allow_null=True)
-
-    class Meta:
-        model = MediaGallery
-        fields = "__all__"
-        extra_kwargs = {
-            'episode': {'write_only': True},
-        }
-
-    def validate(self, attrs):
-        episode = attrs.get('episode', None)
-        media = attrs.get('media', None)
-
-        if not media and not episode:
-            raise ValidationError(detail={
-                "media": ["at least one of media and episode must be set"],
-                "episode": ["at least one of media and episode must be set"]
-            })
-
-        if media and episode:
-            if media != Media.objects.get(tvseries__season__episode=episode):
-                raise ValidationError(detail="The fields episode, media are not compatible with each other.")
-
-        if not media and episode:
-            attrs['media'] = Media.objects.get(tvseries__season__episode=episode)
-
-        return attrs
-
-    @staticmethod
-    def validate_media(value):
-        if value:
-            media = Media.objects.get(pk=value)
-            return media
-        return None
-
-    def to_representation(self, instance):
-        ret = super().to_representation(instance)
-        ret['file'] = MediaFileSerializer(instance=instance.file, context=self.context).data
-        return ret
 
 
 class SliderMediaSerializer(ModelSerializer):

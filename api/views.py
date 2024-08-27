@@ -140,6 +140,7 @@ class ArtistViewSet(ModelViewSet):
 
 
 class MovieViewSet(ModelViewSet):
+    http_method_names = ['get', 'post', 'patch', 'delete']
     permission_classes = [IsSuperUser]
     lookup_field = "pk"
 
@@ -150,10 +151,23 @@ class MovieViewSet(ModelViewSet):
             return MovieSerializer
 
     def get_queryset(self):
-        if self.action in ['retrieve', 'list', 'partial_update']:
+        if self.action in ['partial_update']:
             return Movie.objects.filter().select_related("media").order_by('-pk')
         elif self.action in ['destroy']:
             return Movie.objects.filter()
+        elif self.action in ['retrieve', 'list']:
+            return Movie.objects \
+                .select_related("media", "video", "media__trailer") \
+                .annotate(rating=Avg('media__rating__rating', default=0)) \
+                .prefetch_related(Prefetch("media__casts", queryset=Cast.objects.select_related('artist')
+                                           , to_attr='media_casts'), "media__countries", "media__genres"
+                                  , Prefetch("media__comment_set",
+                                             queryset=Comment.objects.filter(state=Comment.CommentState.ACCEPT)
+                                             .order_by('-created_at')[:5], to_attr='comments')
+                                  , Prefetch("media__mediagallery_set",
+                                             queryset=MediaGallery.objects.order_by('-pk')[:5],
+                                             to_attr='gallery')) \
+                .order_by('-pk')
 
     def get_object(self):
         if self.action in ['partial_update']:
