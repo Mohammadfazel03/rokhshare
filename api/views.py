@@ -1,9 +1,13 @@
-import hashlib
+import os
 from datetime import timedelta
+from io import BytesIO
+from PIL import Image
 from django.contrib.sites.shortcuts import get_current_site
 from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
+from magic import magic
+from moviepy.video.io.VideoFileClip import VideoFileClip
 from rest_framework import status, mixins, filters
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError, NotFound
@@ -657,6 +661,23 @@ class MediaUploaderView(APIView):
 
         if total_chunk == chunk_index + 1:
             media_file.is_complete = True
+            mimetype = magic.from_file(media_file.file.path, mime=True)
+            media_file.mimetype = mimetype
+            if "video" in mimetype:
+                try:
+                    video = VideoFileClip(media_file.file.path)
+                    thumb_temp = video.get_frame(video.duration * 0.3 if video.duration * 0.3 < 5 else 5)
+                    image = Image.fromarray(thumb_temp)
+                    thumbnail_buffer = BytesIO()
+                    image.save(thumbnail_buffer, format='JPEG')
+                    thumbnail_buffer.seek(0)
+                    media_file.thumbnail.save(name=os.path.splitext(media_file.file.name)[0] + ".jpeg",
+                                              content=thumbnail_buffer)
+                    thumbnail_buffer.close()
+                    video.close()
+                except Exception:
+                    pass
+
             media_file.save()
             return Response({"id": media_file.pk, "upload_id": media_file.upload_id, "is_complete": True},
                             status=status.HTTP_201_CREATED)

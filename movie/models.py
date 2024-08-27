@@ -295,6 +295,10 @@ def media_file_filename(instance, filename):
     return f"{get_random_string(length=24)}-{filename}"
 
 
+def media_thumbnail_filename(instance, filename):
+    return f"thumbnail/file/{get_random_string(length=24)}-{filename}"
+
+
 class MediaFile(Model):
     upload_id = CharField(max_length=32, unique=True, editable=False,
                           default=generate_upload_id)
@@ -304,12 +308,17 @@ class MediaFile(Model):
     chunks_uploaded = IntegerField(default=0)
     is_complete = BooleanField(default=False)
     total_chunk = IntegerField(null=False, blank=False)
+    thumbnail = ImageField(null=True, upload_to=media_thumbnail_filename)
+    mimetype = CharField(null=True, max_length=255)
 
     def delete(self, *args, **kwargs):
         super(MediaFile, self).delete(*args, **kwargs)
         if self.file:
             storage, path = self.file.storage, self.file.path
             storage.delete(path)
+
+        if self.thumbnail:
+            self.thumbnail.delete(save=False)
 
     def is_expire(self):
         return not self.is_complete and timedelta(hours=12) + self.uploaded_on < timezone.now()

@@ -128,7 +128,7 @@ class ArtistSerializer(ModelSerializer):
 class MediaFileSerializer(ModelSerializer):
     class Meta:
         model = MediaFile
-        fields = ['file', 'id']
+        fields = ['file', 'id', 'mimetype', 'thumbnail']
 
 
 class CastSerializer(ModelSerializer):
@@ -613,9 +613,3 @@ class AdminCollectionSerializer(ModelSerializer):
     def get_can_edit(self, obj):
         req = self.context.get('request')
         return req.user == obj.user if req else False
-
-
-class MediaFileSerializer(ModelSerializer):
-    class Meta:
-        model = MediaFile
-        fields = ('file', 'uploaded_on')
