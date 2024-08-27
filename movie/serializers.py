@@ -381,22 +381,14 @@ class CreateSeriesSerializer(ModelSerializer):
 
 class SeriesSerializer(ModelSerializer):
     media = MediaSerializer(read_only=True)
-    casts = ArtistSerializer(read_only=True, many=True)
-    rating = SerializerMethodField(read_only=True)
-    comments = SerializerMethodField(read_only=True)
+    casts = CastSerializer(source="media.media_casts", read_only=True, many=True)
+    rating = FloatField(read_only=True)
+    comments = CommentSerializer(read_only=True)
+    gallery = MediaGallerySerializer(read_only=True, many=True)
 
     class Meta:
         model = TvSeries
         fields = "__all__"
-
-    @staticmethod
-    def get_rating(obj):
-        return Rating.objects.filter(media=obj.media).aggregate(Avg('rating', default=0))['rating__avg']
-
-    @staticmethod
-    def get_comments(obj):
-        return CommentSerializer(Comment.objects.filter(media=obj.media, state=Comment.CommentState.ACCEPT)
-                                 .order_by('-created_at')[:5], many=True).data
 
 
 class SeasonSerializer(ModelSerializer):

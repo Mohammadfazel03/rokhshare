@@ -176,6 +176,7 @@ class MovieViewSet(ModelViewSet):
 
 
 class SeriesViewSet(ModelViewSet):
+    http_method_names = ['get', 'post', 'patch', 'delete']
     permission_classes = [IsSuperUser]
     lookup_field = "pk"
 
@@ -186,10 +187,24 @@ class SeriesViewSet(ModelViewSet):
             return SeriesSerializer
 
     def get_queryset(self):
-        if self.action in ['retrieve', 'list', 'partial_update']:
-            return TvSeries.objects.all().select_related("media").order_by('-pk')
+        if self.action in ['partial_update']:
+            return TvSeries.objects.select_related("media").order_by('-pk')
         elif self.action == 'season':
             return TvSeries.objects.prefetch_related('season_set')
+        if self.action in ['retrieve', 'list']:
+            return TvSeries.objects.select_related("media", "media__trailer") \
+                .annotate(rating=Avg('media__rating__rating', default=0)) \
+                .prefetch_related(
+                Prefetch("media__casts", queryset=Cast.objects.select_related('artist').distinct('artist', 'position')
+                         , to_attr='media_casts'), "media__countries", "media__genres",
+                Prefetch("media__comment_set",
+                         queryset=Comment.objects.filter(state=Comment.CommentState.ACCEPT)
+                         .order_by('-created_at')[:5], to_attr='comments'),
+                Prefetch("media__mediagallery_set",
+                         queryset=MediaGallery.objects.order_by('-pk')[:5],
+                         to_attr='gallery')) \
+                .order_by('-pk')
+
         else:
             return TvSeries.objects.filter()
 
@@ -200,7 +215,7 @@ class SeriesViewSet(ModelViewSet):
 
     @action(methods=['GET'], detail=True, url_path='season', url_name='season')
     def season(self, request, pk):
-        queryset = self.get_object().season_set.annotate(episode_number=Count("episode")).filter().order_by("-number")
+        queryset = Season.objects.filter(series_id=pk).annotate(episode_number=Count("episode")).order_by("-number")
         page = self.paginate_queryset(queryset)
         serializer = SeasonSerializer(page, many=True)
         return self.get_paginated_response(serializer.data)
