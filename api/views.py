@@ -171,7 +171,11 @@ class SeriesViewSet(ModelViewSet):
     def season(self, request, pk):
         queryset = Season.objects.filter(series_id=pk).annotate(episode_number=Count("episode")).order_by("-number")
         page = self.paginate_queryset(queryset)
-        serializer = SeasonSerializer(page, many=True)
+        serializer = SeasonSerializer(page, context={
+            'request': self.request,
+            'format': self.format_kwarg,
+            'view': self
+        }, many=True)
         return self.get_paginated_response(serializer.data)
 
 
@@ -184,7 +188,11 @@ class SeasonViewSet(ModelViewSet):
     def episode(self, request, pk):
         queryset = self.get_object().episode_set.annotate(comments_count=Count("comment")).filter().order_by("-number")
         page = self.paginate_queryset(queryset)
-        serializer = EpisodeSerializer(page, many=True)
+        serializer = EpisodeSerializer(page, context={
+            'request': self.request,
+            'format': self.format_kwarg,
+            'view': self
+        }, many=True)
         return self.get_paginated_response(serializer.data)
 
 
@@ -540,13 +548,21 @@ class DashboardViewSet(GenericViewSet):
     @action(methods=['get'], detail=False, url_name='recently_comment', url_path='recently_comment')
     def recently_comment(self, request):
         comment = Comment.objects.all().order_by("-created_at")[:10]
-        comment_serializer = DashboardCommentSerializer(comment, many=True)
+        comment_serializer = DashboardCommentSerializer(comment, context={
+            'request': self.request,
+            'format': self.format_kwarg,
+            'view': self
+        }, many=True)
         return Response(comment_serializer.data)
 
     @action(methods=['get'], detail=False, url_name='slider', url_path='slider')
     def slider(self, request):
-        slider = Slider.objects.all().order_by("-priority")
-        slider_serializer = DashboardSliderSerializer(slider, many=True)
+        slider = Slider.objects.all().select_related('media').order_by("-priority")
+        slider_serializer = DashboardSliderSerializer(slider, context={
+            'request': self.request,
+            'format': self.format_kwarg,
+            'view': self
+        }, many=True)
         return Response(slider_serializer.data)
 
     @action(methods=['get'], detail=False, url_name='advertise', url_path='advertise')
@@ -594,7 +610,11 @@ class AdminMediaViewSet(GenericViewSet):
         artists = Artist.objects.filter().order_by("-pk")
         queryset = self.filter_queryset(artists)
         page = self.paginate_queryset(queryset)
-        serializer = ArtistSerializer(page, many=True)
+        serializer = ArtistSerializer(page, context={
+            'request': self.request,
+            'format': self.format_kwarg,
+            'view': self
+        }, many=True)
         return self.get_paginated_response(serializer.data)
 
     @action(methods=['get'], detail=False, url_name='slider', url_path='slider')
@@ -616,7 +636,11 @@ class AdminMediaViewSet(GenericViewSet):
         ).order_by('-can_edit', '-last_update')
         queryset = self.filter_queryset(collections)
         page = self.paginate_queryset(queryset)
-        serializer = AdminCollectionSerializer(page, many=True)
+        serializer = AdminCollectionSerializer(page, context={
+            'request': self.request,
+            'format': self.format_kwarg,
+            'view': self
+        }, many=True)
         return self.get_paginated_response(serializer.data)
 
 
