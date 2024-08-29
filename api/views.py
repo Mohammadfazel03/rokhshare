@@ -6,7 +6,7 @@ from django.contrib.sites.shortcuts import get_current_site
 from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
-from magic import magic
+import mimetypes
 from moviepy.video.io.VideoFileClip import VideoFileClip
 from rest_framework import status, mixins, filters
 from rest_framework.decorators import action
@@ -669,7 +669,7 @@ class MediaUploaderView(APIView):
 
         if total_chunk == chunk_index + 1:
             media_file.is_complete = True
-            mimetype = magic.from_file(media_file.file.path, mime=True)
+            mimetype, encoding = mimetypes.guess_type(media_file.file.path)
             media_file.mimetype = mimetype
             if "video" in mimetype:
                 try:
