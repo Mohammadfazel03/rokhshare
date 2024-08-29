@@ -368,7 +368,8 @@ class CommentViewSet(mixins.CreateModelMixin,
     queryset = Comment.objects.filter().order_by('-pk')
 
     def get_permissions(self):
-        if self.action == 'list' or self.action == 'confirm_comment' or self.action == 'media_comment':
+        if self.action == 'list' or self.action == 'confirm_comment' or self.action == 'media_comment' or \
+                self.action == 'episode_comment':
             return [IsSuperUser()]
         elif self.action == 'create' or self.action == 'my_comment':
             return [IsAuthenticated()]
@@ -426,27 +427,27 @@ class CommentViewSet(mixins.CreateModelMixin,
 
     @action(methods=['get'], detail=False, url_name='media_comment', url_path='media/(?P<pk>[0-9]+)')
     def media_comment(self, request, pk):
-        queryset = Comment.objects.filter(user=request.user, media__pk=pk).order_by('-pk')
+        queryset = Comment.objects.filter(media__pk=pk).order_by('-pk')
         queryset = self.filter_queryset(queryset)
         page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer)
+        serializer = self.get_serializer(page, context={
+            'request': self.request,
+            'format': self.format_kwarg,
+            'view': self
+        }, many=True)
+        return self.get_paginated_response(serializer.data)
 
     @action(methods=['get'], detail=False, url_name='episode_comment', url_path='episode/(?P<pk>[0-9]+)')
     def episode_comment(self, request, pk):
-        queryset = Comment.objects.filter(user=request.user, episode__pk=pk).order_by('-pk')
+        queryset = Comment.objects.filter(episode__pk=pk).order_by('-pk')
         queryset = self.filter_queryset(queryset)
         page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer)
+        serializer = self.get_serializer(page, context={
+            'request': self.request,
+            'format': self.format_kwarg,
+            'view': self
+        }, many=True)
+        return self.get_paginated_response(serializer.data)
 
 
 class RatingViewSet(GenericViewSet, mixins.CreateModelMixin, mixins.DestroyModelMixin):
