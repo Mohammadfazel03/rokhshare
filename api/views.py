@@ -72,12 +72,14 @@ class AuthViewSet(ViewSet):
 
 
 class GenreViewSet(ModelViewSet):
+    http_method_names = ['get', 'post', 'patch', 'delete']
     permission_classes = [IsSuperUser]
     serializer_class = GenreSerializer
     queryset = Genre.objects.filter().order_by('-pk')
 
 
 class CountryViewSet(ModelViewSet):
+    http_method_names = ['get', 'post', 'patch', 'delete']
     permission_classes = [IsSuperUser]
     serializer_class = CountrySerializer
     queryset = Country.objects.filter().order_by('-pk')
@@ -86,6 +88,7 @@ class CountryViewSet(ModelViewSet):
 
 
 class ArtistViewSet(ModelViewSet):
+    http_method_names = ['get', 'post', 'patch', 'delete']
     permission_classes = [IsSuperUser]
     serializer_class = ArtistSerializer
     queryset = Artist.objects.filter().order_by('-pk')
@@ -180,6 +183,7 @@ class SeriesViewSet(ModelViewSet):
 
 
 class SeasonViewSet(ModelViewSet):
+    http_method_names = ['get', 'post', 'patch', 'delete']
     permission_classes = [IsSuperUser]
     serializer_class = SeasonSerializer
     queryset = Season.objects.all()
@@ -274,6 +278,7 @@ class SliderViewSet(ModelViewSet):
 
 
 class CollectionViewSet(ModelViewSet):
+    http_method_names = ['get', 'post', 'patch', 'delete']
     serializer_class = CollectionSerializer
 
     def get_permissions(self):
@@ -365,6 +370,7 @@ class CommentViewSet(mixins.CreateModelMixin,
                      mixins.DestroyModelMixin,
                      mixins.ListModelMixin,
                      GenericViewSet):
+    http_method_names = ['get', 'post', 'patch', 'delete']
     queryset = Comment.objects.filter().order_by('-pk')
 
     def get_permissions(self):
@@ -474,6 +480,7 @@ class RatingViewSet(GenericViewSet, mixins.CreateModelMixin, mixins.DestroyModel
 
 
 class DashboardViewSet(GenericViewSet):
+    http_method_names = ['get']
     permission_classes = [IsSuperUser]
 
     @action(methods=['get'], detail=False, url_name='header', url_path='header')
@@ -574,6 +581,7 @@ class DashboardViewSet(GenericViewSet):
 
 
 class AdminMediaViewSet(GenericViewSet):
+    http_method_names = ['get']
     permission_classes = [IsSuperUser]
 
     @action(methods=['get'], detail=False, url_name='movie', url_path='movie')
@@ -720,6 +728,7 @@ class MediaUploaderView(APIView):
 
 
 class MediaViewSet(GenericViewSet, mixins.ListModelMixin):
+    http_method_names = ['get']
     permission_classes = [IsSuperUser]
     serializer_class = MediaSerializer
     queryset = Media.objects.filter().order_by('-pk')
