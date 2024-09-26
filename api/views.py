@@ -746,6 +746,21 @@ class MediaViewSet(GenericViewSet, mixins.ListModelMixin):
         })
         return self.get_paginated_response(serializer.data)
 
+
+class UserViewSet(GenericViewSet, mixins.ListModelMixin):
+    http_method_names = ['get']
+    permission_classes = [IsSuperUser]
+    serializer_class = DashboardUserSerializer
+
+    def get_queryset(self):
+        now = timezone.now()
+        is_premium = Exists(Subscription.objects.filter(user=OuterRef("pk"), end_date__gt=now))
+        seen_movies = Count("seenmedia")
+        return User.objects.filter(is_superuser=False).annotate(seen_movies=seen_movies,
+                                                                is_premium=is_premium).order_by(
+            "-date_joined").filter()
+
+
 class AdvertiseViewSet(ModelViewSet):
     http_method_names = ['get', 'post', 'patch', 'delete']
 
