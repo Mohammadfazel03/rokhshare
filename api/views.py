@@ -28,7 +28,7 @@ from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializ
     RatingSerializer, DashboardCommentSerializer, DashboardSliderSerializer, AdminMovieSerializer, \
     AdminTvSeriesSerializer, AdminCollectionSerializer, CommentSerializer, MyCommentSerializer, \
     UpdateCommentSerializer, CreateEpisodeSerializer, MediaSerializer, CreateSliderSerializer
-from plan.serializers import DashboardPlanSerializer
+from plan.serializers import DashboardPlanSerializer, PlanSerializer, UpdatePlanSerializer
 from user.models import User
 from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers, \
     DashboardUserSerializer
@@ -766,3 +766,29 @@ class AdvertiseViewSet(ModelViewSet):
         if self.action == 'retrieve':
             return [AllowAny()]
         return [IsSuperUser()]
+
+
+class PlanViewSet(GenericViewSet, mixins.ListModelMixin, mixins.CreateModelMixin,
+                  mixins.RetrieveModelMixin, mixins.UpdateModelMixin):
+    http_method_names = ['get', 'post', 'patch']
+    serializer_class = PlanSerializer
+
+    def get_permissions(self):
+        if self.action == 'list' or self.action == 'retrieve':
+            return [AllowAny()]
+
+        return [IsSuperUser()]
+
+    def get_queryset(self):
+        if self.request.user.is_superuser:
+            return Plan.objects.all()
+        return Plan.objects.filter(is_enable=True)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = UpdatePlanSerializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(serializer.data)
+
