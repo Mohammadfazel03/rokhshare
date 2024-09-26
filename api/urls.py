@@ -4,7 +4,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from api.views import AuthViewSet, GenreViewSet, CountryViewSet, ArtistViewSet, MovieViewSet, SeriesViewSet, \
     SeasonViewSet, EpisodeViewSet, MediaGalleryViewSet, SliderViewSet, CollectionViewSet, CommentViewSet, RatingViewSet, \
-    DashboardViewSet, AdminMediaViewSet, MediaUploaderView, MediaViewSet
+    DashboardViewSet, AdminMediaViewSet, MediaUploaderView, MediaViewSet,\
+    AdvertiseViewSet
 
 url = DefaultRouter()
 url.register('auth', AuthViewSet, basename='auth')
@@ -23,6 +24,7 @@ url.register('rating', RatingViewSet, basename='rating')
 url.register('dashboard', DashboardViewSet, basename='dashboard')
 url.register('admin/media', AdminMediaViewSet, basename='admin-media')
 url.register('media', MediaViewSet, basename='media')
+url.register('advertise', AdvertiseViewSet, basename='advertise')
 
 urlpatterns = [
                   path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),

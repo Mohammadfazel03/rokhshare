@@ -1,6 +1,6 @@
 from django.db import models
 
-from movie.models import Movie, Episode
+from movie.models import Movie, Episode, MediaFile
 from user.models import User
 
 
@@ -12,9 +12,14 @@ def advertise_path(instance, filename):
 class Advertise(models.Model):
     title = models.CharField(max_length=100)
     time = models.IntegerField()
-    video = models.FileField(upload_to=advertise_path)
+    file = models.OneToOneField(MediaFile, on_delete=models.CASCADE, null=False)
     created_at = models.DateTimeField(auto_now_add=True)
     number_repeated = models.IntegerField()
+
+    def delete(self, *args, **kwargs):
+        super().delete(*args, **kwargs)
+        if self.file:
+            self.file.delete()
 
 
 class AdvertiseSeen(models.Model):

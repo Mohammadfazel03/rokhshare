@@ -18,7 +18,7 @@ from rest_framework.views import APIView
 from rest_framework.viewsets import ViewSet, ModelViewSet, GenericViewSet
 from django.core.mail import EmailMessage
 from advertise.models import AdvertiseSeen, Advertise
-from advertise.serializers import DashboardAdvertiseSerializer
+from advertise.serializers import DashboardAdvertiseSerializer, AdvertiseSerializer, CreateAdvertiseSerializer
 from api.permissions import IsSuperUser, IsOwner, CollectionRetrievePermission
 from movie.models import Genre, Artist, Country, Movie, TvSeries, Season, Episode, MediaGallery, Slider, Collection, \
     Media, Comment, Rating, SeenMedia, MediaFile, Cast
@@ -745,3 +745,24 @@ class MediaViewSet(GenericViewSet, mixins.ListModelMixin):
             'view': self
         })
         return self.get_paginated_response(serializer.data)
+
+class AdvertiseViewSet(ModelViewSet):
+    http_method_names = ['get', 'post', 'patch', 'delete']
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return CreateAdvertiseSerializer
+        return AdvertiseSerializer
+
+    def get_queryset(self):
+        if self.action in ['list', 'retrieve']:
+            return Advertise.objects.select_related('file') \
+                .annotate(view_number=Count("advertiseseen")) \
+                .order_by("-created_at")
+
+        return Advertise.objects.filter()
+
+    def get_permissions(self):
+        if self.action == 'retrieve':
+            return [AllowAny()]
+        return [IsSuperUser()]
