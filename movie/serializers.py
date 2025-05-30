@@ -1,3 +1,4 @@
+from django.db.models import Prefetch
 from rest_framework.serializers import *
 from django.db import transaction
 from rest_framework.validators import UniqueValidator
@@ -5,6 +6,8 @@ from api.validators import MediaEpisodeValidator
 from movie.models import Genre, Country, Artist, Media, Movie, Cast, TvSeries, Season, \
     Episode, MediaGallery, Slider, Collection, Comment, Rating, MediaFile
 from user.serializers import CommentUserSerializer
+from api.pagination import CustomPageNumberPagination
+from moviepy import VideoFileClip
 
 
 class CreateCommentSerializer(ModelSerializer):
@@ -216,6 +219,8 @@ def cast_validator(value):
 class CreateMovieSerializer(ModelSerializer):
     video = PrimaryKeyRelatedField(queryset=MediaFile.objects.filter(is_complete=True), many=False, allow_null=False,
                                    write_only=True)
+    trailer = PrimaryKeyRelatedField(queryset=MediaFile.objects.filter(is_complete=True), many=False, allow_null=False,
+                                     write_only=True)
     casts = JSONField(validators=[cast_validator], required=True, write_only=True)
     time = IntegerField(required=True, write_only=True)
     genres = PrimaryKeyRelatedField(queryset=Genre.objects.filter(), write_only=True, many=True, allow_null=False)
@@ -226,8 +231,13 @@ class CreateMovieSerializer(ModelSerializer):
         fields = "__all__"
 
     def create(self, validated_data):
+
         casts = map(lambda c: Cast(position=c['position'], artist_id=int(c['artist_id'])), validated_data.pop('casts'))
-        movie = Movie(video=validated_data.pop('video'), time=validated_data.pop('time'))
+        time = validated_data.pop('time', 0)
+        if time == 0:
+            time = VideoFileClip(validated_data.get('video').file.path).duration
+
+        movie = Movie(video=validated_data.pop('video'), time=time)
         countries = validated_data.pop('countries')
         genres = validated_data.pop('genres')
         media = Media(**validated_data)
@@ -263,23 +273,27 @@ class CreateMovieSerializer(ModelSerializer):
 
         if validated_data.get("video", None):
             if instance.movie.video != validated_data['video']:
+                time = validated_data.pop('time', 0)
+                if time == 0:
+                    time = VideoFileClip(validated_data.get('video').file.path).duration
+
                 old_values['video'] = instance.movie.video
                 instance.movie.video = validated_data['video']
+                instance.movie.time = time
 
-        if validated_data.get("time", None):
-            instance.movie.time = validated_data['time']
 
         with transaction.atomic():
             if validated_data.get('casts', None):
                 if len(validated_data.get('casts', None)) > 0:
-                    instance.movie.casts.clear()
+                    instance.casts.clear()
                     for cast in validated_data.get('casts', []):
                         Cast(artist_id=cast['artist_id'], position=cast['position'], media=instance).save()
             instance.save()
 
             for attr, value in m2m_fields:
-                field = getattr(instance, attr)
-                field.set(value)
+                if attr != 'casts':
+                    field = getattr(instance, attr)
+                    field.set(value)
 
             instance.movie.save()
 
@@ -292,7 +306,7 @@ class CreateMovieSerializer(ModelSerializer):
         return instance
 
     def to_representation(self, instance):
-        representation_serializer = MovieSerializer(instance=instance.movie)
+        representation_serializer = MediaMovieSerializer(instance=instance.movie)
         return representation_serializer.data
 
 
@@ -306,7 +320,7 @@ class MediaSerializer(ModelSerializer):
         exclude = ['casts']
 
 
-class MovieSerializer(ModelSerializer):
+class MediaMovieSerializer(ModelSerializer):
     media = MediaSerializer(read_only=True, allow_null=False)
     rating = FloatField(read_only=True)
     comments = CommentSerializer(read_only=True, many=True)
@@ -379,7 +393,10 @@ class CreateSeriesSerializer(ModelSerializer):
 
 class SeriesSerializer(ModelSerializer):
     media = MediaSerializer(read_only=True)
-    casts = CastSerializer(source="media.media_casts", read_only=True, many=True)
+    #### for postgresql
+    # casts = CastSerializer(source="media.media_casts", read_only=True, many=True)
+    #### for sqlite
+    casts = SerializerMethodField()
     rating = FloatField(read_only=True)
     comments = CommentSerializer(read_only=True)
     gallery = MediaGallerySerializer(read_only=True, many=True)
@@ -387,6 +404,12 @@ class SeriesSerializer(ModelSerializer):
     class Meta:
         model = TvSeries
         fields = "__all__"
+
+    def get_casts(self, instance):
+        q = Cast.objects.filter(media=instance.media).values('artist', 'position').distinct()
+        return CastSerializer(
+            map(lambda x: {'artist': Artist.objects.get(id=x['artist']), 'position': x['position']}, q.all()),
+            many=True, context={**self.context}).data
 
 
 class SeasonSerializer(ModelSerializer):
@@ -449,8 +472,12 @@ class CreateEpisodeSerializer(ModelSerializer):
 
     def create(self, validated_data):
         casts = map(lambda c: Cast(position=c['position'], artist_id=int(c['artist_id'])), validated_data.pop('casts'))
+        time = validated_data.pop('time', 0)
+        if time == 0:
+            time = VideoFileClip(validated_data.get('video').file.path).duration
+
         with transaction.atomic():
-            instance = Episode.objects.create(**validated_data)
+            instance = Episode.objects.create(**validated_data, time=time)
             media = Media.objects.get(tvseries__season=validated_data.get('season'))
             for cast in casts:
                 cast.media = media
@@ -467,9 +494,20 @@ class CreateEpisodeSerializer(ModelSerializer):
         old_values = {}
         raise_errors_on_nested_writes('update', self, validated_data)
 
+        if validated_data.get("video", None):
+            if instance.video != validated_data['video']:
+                time = validated_data.pop('time', 0)
+                if time == 0:
+                    time = VideoFileClip(validated_data.get('video').file.path).duration
+
+                old_values['video'] = instance.video
+                instance.video = validated_data.pop('video')
+                instance.time = time
+
         for attr, value in validated_data.items():
             if attr != 'season' and attr != 'casts':
-                if attr in ('thumbnail', 'video', 'poster', 'trailer'):
+                if attr in ('thumbnail', 'poster', 'trailer'):
+
                     old_values[attr] = getattr(instance, attr, None)
 
                 if value is not None and type(value) == str and len(value) == 0:
@@ -521,6 +559,7 @@ class SliderMediaSerializer(ModelSerializer):
 
 class SliderSerializer(ModelSerializer):
     media = SliderMediaSerializer(read_only=True)
+    rating = FloatField(allow_null=True)
 
     class Meta:
         model = Slider
@@ -547,6 +586,19 @@ class CollectionSerializer(ModelSerializer):
         read_only_fields = ('state', 'media')
 
 
+class AppCollectionSerializer(ModelSerializer):
+    media2 = SliderMediaSerializer(read_only=True, many=True)
+
+    class Meta:
+        model = Collection
+        exclude = ['user', 'media', 'is_private', 'state']
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        rep['media'] = rep.pop('media2')
+        return rep
+
+
 class MediaInputSerializer(Serializer):
     media = PrimaryKeyRelatedField(many=True, queryset=Media.objects.all(), required=True, allow_null=False,
                                    allow_empty=False)
@@ -556,6 +608,7 @@ class RatingSerializer(ModelSerializer):
     class Meta:
         model = Rating
         fields = "__all__"
+        read_only_fields = ['user']
 
     def validate_rating(self, value):
         if value > 10 or value < 0:
@@ -572,11 +625,11 @@ class RatingSerializer(ModelSerializer):
 
     def create(self, validated_data):
         try:
-            instance = Rating.objects.get(media=validated_data.get('media'), user=validated_data['user'],
+            instance = Rating.objects.get(media=validated_data.get('media'), user=self.context.get('request').user,
                                           episode=validated_data.get('episode'))
             instance = super().update(instance, validated_data)
         except Rating.DoesNotExist:
-            instance = Rating.objects.create(**validated_data)
+            instance = Rating.objects.create(**validated_data, user=self.context.get('request').user)
 
         return instance
 
@@ -625,3 +678,189 @@ class AdminCollectionSerializer(ModelSerializer):
     def get_can_edit(self, obj):
         req = self.context.get('request')
         return req.user == obj.user if req else False
+
+
+class SearchParamsSerializer(Serializer):
+    query = CharField(max_length=200, required=False)
+    media_type = ChoiceField(choices=['both', 'movie', 'series'], default='both', allow_blank=False, allow_null=False)
+    genres = ListField(child=IntegerField(), allow_empty=False, allow_null=False, required=False)
+    countries = ListField(child=IntegerField(), allow_empty=False, allow_null=False, required=False)
+    start_date = IntegerField(min_value=1900, allow_null=False, required=False)
+    end_date = IntegerField(allow_null=False, required=False)
+    sort_by = ChoiceField(choices=['-name', 'name', '-release_date', 'release_date', '-rate', 'rate'],
+                          default='-name', allow_blank=False, allow_null=False)
+
+    def validate(self, attrs):
+        if (attrs.get('start_date', None) is not None and attrs.get('end_date', None) is None) or (
+                attrs.get('start_date', None) is None and attrs.get('end_date', None) is not None):
+            raise ValidationError()
+
+        if attrs.get('start_date', None) is not None and attrs.get('end_date', None) is not None:
+            if attrs.get('start_date', None) >= attrs.get('end_date', None):
+                raise ValidationError()
+
+        return attrs
+
+
+class MovieSerializer(ModelSerializer):
+    # video = SerializerMethodField()
+
+    class Meta:
+        model = Movie
+        exclude = ['media', 'video']
+
+    # def get_video(self, instance):
+    #     if not self.context.get('request').user.is_anonymous:
+    #         if self.context.get('value') == Media.MediaType.FREE or self.context.get(
+    #                 'value') == Media.MediaType.ADVERTISING or self.context.get('request').user.is_subscriber:
+    #             return MediaFileSerializer(instance.video, context=self.context).data
+    #
+    #     return None
+
+
+class RetrieveEpisodeSerializer(ModelSerializer):
+    # video = SerializerMethodField()
+
+    class Meta:
+        model = Episode
+        fields = ['id', 'name', 'number', 'time', 'synopsis', 'thumbnail', 'poster', 'publication_date']
+
+    # def get_video(self, instance):
+    #     if not self.context.get('request').user.is_anonymous:
+    #         if self.context.get('value') == Media.MediaType.FREE or self.context.get(
+    #                 'value') == Media.MediaType.ADVERTISING or self.context.get('request').user.is_subscriber:
+    #             return MediaFileSerializer(instance.video, context=self.context).data
+    #
+    #     return None
+
+
+class RetrieveSeasonSerializer(ModelSerializer):
+    episodes = RetrieveEpisodeSerializer(many=True)
+    episode_number = SerializerMethodField()
+
+    class Meta:
+        model = Season
+        fields = ['id', 'name', 'number', 'episodes', 'episode_number']
+
+    def get_episode_number(self, instance):
+        return Episode.objects.filter(season=instance).count()
+
+
+class RetrieveSeriesSerializer(ModelSerializer):
+    seasons = RetrieveSeasonSerializer(many=True)
+
+    class Meta:
+        model = TvSeries
+        exclude = ['media']
+
+
+class RetrieveCommentSerializer(ModelSerializer):
+    user = CommentUserSerializer()
+
+    class Meta:
+        model = Comment
+        fields = ['title', 'comment', 'user', 'created_at']
+
+
+class RetrieveMediaSerializer(ModelSerializer):
+    total_comments = SerializerMethodField()
+    genres = GenreSerializer(read_only=True, many=True)
+    countries = CountrySerializer(read_only=True, many=True)
+    trailer = MediaFileSerializer(read_only=True)
+    #### for postgresql
+    # casts = CastSerializer(many=True)
+
+    #### for sqlite
+    casts = SerializerMethodField()
+    comments = RetrieveCommentSerializer(many=True)
+    rate = FloatField()
+
+    class Meta:
+        model = Media
+        fields = '__all__'
+
+    #### for sqlite
+    def get_casts(self, instance):
+        q = Cast.objects.filter(media=instance).values('artist', 'position').distinct()
+        return CastSerializer(
+            map(lambda x: {'artist': Artist.objects.get(id=x['artist']), 'position': x['position']}, q.all()),
+            many=True, context={**self.context}).data
+
+    def get_total_comments(self, instance):
+        return Comment.objects.filter(media=instance, state=Comment.CommentState.ACCEPT).count()
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        is_movie = hasattr(instance, 'movie')
+        rep['is_movie'] = is_movie
+        rep['my_rate'] = None
+
+        if not self.context.get('request').user.is_anonymous:
+            rate = Rating.objects.filter(user=self.context.get('request').user, media=instance).first()
+            if rate:
+                rep['my_rate'] = rate.rating
+
+        rep['is_premium'] = self.context.get('request').user.is_subscriber if not self.context.get(
+            'request').user.is_anonymous else False
+        if is_movie:
+            movie = Movie.objects.select_related('video').get(media=instance)
+            rep['movie'] = MovieSerializer(movie, context={**self.context, "value": instance.value}).data
+        else:
+            series = TvSeries.objects.prefetch_related(
+                Prefetch("season_set", queryset=Season.objects.prefetch_related(
+                    Prefetch('episode_set',
+                             queryset=Episode.objects.order_by('number')[:CustomPageNumberPagination.page_size],
+                             to_attr='episodes')).order_by(
+                    'number')[:1], to_attr='seasons')
+            ).get(media=instance)
+            rep['series'] = RetrieveSeriesSerializer(series, context={**self.context, "value": instance.value}).data
+
+        return rep
+
+
+class MediaRateSerializer(Serializer):
+    rating = IntegerField()
+    count = IntegerField()
+
+
+class MediaFilePlaySerializer(ModelSerializer):
+    ads_time = SerializerMethodField()
+    is_premium = SerializerMethodField()
+    file = SerializerMethodField()
+
+    class Meta:
+        model = MediaFile
+        fields = ['file', 'id', 'mimetype', 'thumbnail', 'ads_time', 'is_premium']
+
+    def get_is_premium(self, instance):
+        return self.context.get('request').user.is_subscriber or self.context.get('media').value == Media.MediaType.FREE
+
+    def get_file(self, instance):
+        url = f'/api/v1/stream/{instance.pk}/file/'
+        request = self.context.get('request', None)
+        if request is not None:
+            return request.build_absolute_uri(url)
+
+        return url
+
+    def get_ads_time(self, instance):
+        media = self.context.get('media')
+        user = self.context.get('request').user
+        video = VideoFileClip(instance.file.path)
+        duration = video.duration
+
+        if user.is_subscriber:
+            return None
+
+        if media.value == Media.MediaType.FREE:
+            return [0]
+
+        if media.value == Media.MediaType.ADVERTISING:
+            if duration > 300:
+                return [0, int(duration // 20), int(duration // 10), int(duration // 15), ]
+            return [0]
+
+        if media.value == Media.MediaType.SUBSCRIPTION:
+            raise ValidationError()
+
+        return [0]

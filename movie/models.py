@@ -202,7 +202,7 @@ class Cast(Model):
         EDITOR = "Editor", _("Editor")
         EXECUTOR_OF_PLAN = "Executor Of Plan", _("Executor Of Plan")
         PRODUCTION_MANAGER = "Production Manager", _("Production Manager")
-        DIRECTOR_OF_FILMING_MANAGER = "Director Of Filming Manager", _("Production Manager")
+        DIRECTOR_OF_FILMING_MANAGER = "Director Of Filming Manager", _("Director Of Filming Manager")
 
     media = ForeignKey(Media, on_delete=CASCADE, null=False)
     episode = ForeignKey(Episode, on_delete=CASCADE, null=True)
@@ -268,7 +268,7 @@ class Comment(Model):
     episode = ForeignKey(Episode, on_delete=CASCADE, null=True)
     parent = ForeignKey('self', on_delete=CASCADE, null=True, blank=True, related_name='answer')
     comment = TextField(null=False)
-    title = CharField(max_length=100, null=False)
+    title = CharField(max_length=100, null=True)
     created_at = DateTimeField(auto_now_add=True, null=False)
     state = SmallIntegerField(choices=CommentState.choices, default=CommentState.PENDING, null=False)
 

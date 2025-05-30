@@ -1,6 +1,6 @@
 from django.db import models
 
-from movie.models import Movie, Episode, MediaFile
+from movie.models import Movie, Episode, MediaFile, Media
 from user.models import User
 
 
@@ -25,7 +25,7 @@ class Advertise(models.Model):
 class AdvertiseSeen(models.Model):
     advertise = models.ForeignKey(Advertise, on_delete=models.CASCADE)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    movie = models.ForeignKey(Movie, on_delete=models.CASCADE)
-    episode = models.ForeignKey(Episode, on_delete=models.CASCADE)
-    times = models.IntegerField()
+    media = models.ForeignKey(Media, null=False, on_delete=models.CASCADE)
+    episode = models.ForeignKey(Episode, null=True, on_delete=models.CASCADE)
+    times = models.IntegerField(default=1)
     created_at = models.DateTimeField(auto_now_add=True)

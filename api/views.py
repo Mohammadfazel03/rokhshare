@@ -1,8 +1,11 @@
 import os
+import re
 from datetime import timedelta
 from io import BytesIO
 from PIL import Image
+from django.contrib.postgres.search import SearchVector
 from django.contrib.sites.shortcuts import get_current_site
+from django.http import QueryDict, StreamingHttpResponse
 from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
@@ -17,28 +20,43 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ViewSet, ModelViewSet, GenericViewSet
 from django.core.mail import EmailMessage
+from rest_framework_simplejwt.authentication import AUTH_HEADER_TYPES
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
+
 from advertise.models import AdvertiseSeen, Advertise
-from advertise.serializers import DashboardAdvertiseSerializer, AdvertiseSerializer, CreateAdvertiseSerializer
+from advertise.serializers import DashboardAdvertiseSerializer, AdvertiseSerializer, CreateAdvertiseSerializer, \
+    AdvertiseSeenSerializer, PlayAdvertiseSerializer
 from api.permissions import IsSuperUser, IsOwner, CollectionRetrievePermission
 from movie.models import Genre, Artist, Country, Movie, TvSeries, Season, Episode, MediaGallery, Slider, Collection, \
     Media, Comment, Rating, SeenMedia, MediaFile, Cast
 from movie.serializers import GenreSerializer, CountrySerializer, ArtistSerializer, CreateMovieSerializer, \
-    MovieSerializer, SeriesSerializer, CreateSeriesSerializer, SeasonSerializer, EpisodeSerializer, \
+    MediaMovieSerializer, SeriesSerializer, CreateSeriesSerializer, SeasonSerializer, EpisodeSerializer, \
     MediaGallerySerializer, SliderSerializer, CollectionSerializer, MediaInputSerializer, CreateCommentSerializer, \
     RatingSerializer, DashboardCommentSerializer, DashboardSliderSerializer, AdminMovieSerializer, \
     AdminTvSeriesSerializer, AdminCollectionSerializer, CommentSerializer, MyCommentSerializer, \
-    UpdateCommentSerializer, CreateEpisodeSerializer, MediaSerializer, CreateSliderSerializer
-from plan.serializers import DashboardPlanSerializer, PlanSerializer, UpdatePlanSerializer
+    UpdateCommentSerializer, CreateEpisodeSerializer, MediaSerializer, CreateSliderSerializer, AppCollectionSerializer, \
+    SearchParamsSerializer, SliderMediaSerializer, RetrieveMediaSerializer, RetrieveEpisodeSerializer, \
+    MediaRateSerializer, RetrieveCommentSerializer, MediaFilePlaySerializer
+from plan.serializers import DashboardPlanSerializer, PlanSerializer, UpdatePlanSerializer, PaymentSerializer, \
+    SubscriptionSerializer
 from user.models import User
 from user.serializers import RegisterUserSerializer, LoginUserSerializers, LoginSuperUserSerializers, \
-    DashboardUserSerializer
+    DashboardUserSerializer, TokenRefreshSerializer
 from django.template.loader import render_to_string
-from django.db.models import Q, Exists, OuterRef, Case, When, Value, BooleanField
+from django.db.models import Q, Exists, OuterRef, Case, When, Value, BooleanField, Prefetch, Avg, F, Subquery
 from plan.models import Subscription, Plan
 from django.db.models import Count
 
 
 class AuthViewSet(ViewSet):
+
+    def get_authenticate_header(self, request):
+        if self.action == 'refresh':
+            return '{} realm="{}"'.format(
+                AUTH_HEADER_TYPES[0],
+                'api',
+            )
+        return super().get_authenticate_header(request)
 
     @action(methods=['POST'], detail=False, permission_classes=[AllowAny])
     def register(self, request):
@@ -46,7 +64,6 @@ class AuthViewSet(ViewSet):
         if user_serializer.is_valid(raise_exception=True):
             user, user_token = user_serializer.save()
             current_site = get_current_site(request)
-            user.get_full_name()
             message = render_to_string('active_email.html', {
                 'user': user, 'domain': current_site.domain,
                 'uid': urlsafe_base64_encode(force_bytes(user.pk)),
@@ -70,21 +87,69 @@ class AuthViewSet(ViewSet):
         serializer.is_valid(raise_exception=True)
         return Response(serializer.validated_data, status=status.HTTP_200_OK)
 
+    @action(methods=['POST'], detail=False, permission_classes=[AllowAny], name="token_refresh")
+    def refresh(self, request):
+        serializer = TokenRefreshSerializer(data=request.data, context={
+            'request': self.request,
+            'format': self.format_kwarg,
+            'view': self
+        })
+
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError as e:
+            raise InvalidToken(e.args[0])
+
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
+
 
 class GenreViewSet(ModelViewSet):
     http_method_names = ['get', 'post', 'patch', 'delete']
-    permission_classes = [IsSuperUser]
     serializer_class = GenreSerializer
     queryset = Genre.objects.filter().order_by('-pk')
+
+    def get_permissions(self):
+        if self.action in ['retrieve', 'list', 'all', 'media']:
+            return [AllowAny()]
+        return [IsSuperUser()]
+
+    @action(methods=['get'], detail=False, url_name='all', url_path='all')
+    def all(self, request, *args, **kwargs):
+        genres = Genre.objects.filter()
+        queryset = self.filter_queryset(genres)
+        serializer = GenreSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(methods=['get'], detail=True, url_name='media', url_path='media')
+    def media(self, request, pk):
+        page = self.paginate_queryset(
+            Media.objects.filter(genres__in=[pk]).prefetch_related("genres", "countries").order_by('-pk'))
+        serializer = SliderMediaSerializer(page, context={
+            'request': self.request,
+            'format': self.format_kwarg,
+            'view': self
+        }, many=True)
+        return self.get_paginated_response(serializer.data)
 
 
 class CountryViewSet(ModelViewSet):
     http_method_names = ['get', 'post', 'patch', 'delete']
-    permission_classes = [IsSuperUser]
     serializer_class = CountrySerializer
     queryset = Country.objects.filter().order_by('-pk')
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'id']
+
+    def get_permissions(self):
+        if self.action == 'all':
+            return [AllowAny()]
+        return [IsSuperUser()]
+
+    @action(methods=['get'], detail=False, url_name='all', url_path='all')
+    def all(self, request, *args, **kwargs):
+        countries = Country.objects.filter()
+        queryset = self.filter_queryset(countries)
+        serializer = CountrySerializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 class ArtistViewSet(ModelViewSet):
@@ -98,14 +163,19 @@ class ArtistViewSet(ModelViewSet):
 
 class MovieViewSet(ModelViewSet):
     http_method_names = ['get', 'post', 'patch', 'delete']
-    permission_classes = [IsSuperUser]
     lookup_field = "pk"
+
+    def get_permissions(self):
+        if self.action == 'play':
+            return [IsAuthenticated()]
+
+        return [IsSuperUser()]
 
     def get_serializer_class(self):
         if self.action in ['create', 'partial_update']:
             return CreateMovieSerializer
         elif self.action in ['retrieve', 'list']:
-            return MovieSerializer
+            return MediaMovieSerializer
 
     def get_queryset(self):
         if self.action in ['partial_update']:
@@ -131,11 +201,24 @@ class MovieViewSet(ModelViewSet):
             return super().get_object().media
         return super().get_object()
 
+    @action(methods=['get'], detail=True)
+    def play(self, request, pk):
+        movie = Movie.objects.select_related('media').select_related('video').get(pk=pk)
+
+        return Response(MediaFilePlaySerializer(movie.video, context={
+            'request': request,
+            'media': movie.media
+        }).data)
+
 
 class SeriesViewSet(ModelViewSet):
     http_method_names = ['get', 'post', 'patch', 'delete']
-    permission_classes = [IsSuperUser]
     lookup_field = "pk"
+
+    def get_permissions(self):
+        if self.action == 'season_all':
+            return [AllowAny()]
+        return [IsSuperUser()]
 
     def get_serializer_class(self):
         if self.action in ['create', 'partial_update']:
@@ -149,11 +232,24 @@ class SeriesViewSet(ModelViewSet):
         elif self.action == 'season':
             return TvSeries.objects.prefetch_related('season_set')
         if self.action in ['retrieve', 'list']:
+            #### for postgresql
+            # return TvSeries.objects.select_related("media", "media__trailer") \
+            #     .annotate(rating=Avg('media__rating__rating', default=0)) \
+            #     .prefetch_related(
+            #     Prefetch("media__casts", queryset=Cast.objects.select_related('artist').distinct('artist', 'position'),
+            #              to_attr='media_casts'), "media__countries", "media__genres",
+            #     Prefetch("media__comment_set",
+            #              queryset=Comment.objects.filter(state=Comment.CommentState.ACCEPT)
+            #              .order_by('-created_at')[:5], to_attr='comments'),
+            #     Prefetch("media__mediagallery_set",
+            #              queryset=MediaGallery.objects.order_by('-pk')[:5],
+            #              to_attr='gallery')) \
+            #     .order_by('-pk')
+            #### for sqlite
             return TvSeries.objects.select_related("media", "media__trailer") \
                 .annotate(rating=Avg('media__rating__rating', default=0)) \
                 .prefetch_related(
-                Prefetch("media__casts", queryset=Cast.objects.select_related('artist').distinct('artist', 'position'),
-                         to_attr='media_casts'), "media__countries", "media__genres",
+                "media__countries", "media__genres",
                 Prefetch("media__comment_set",
                          queryset=Comment.objects.filter(state=Comment.CommentState.ACCEPT)
                          .order_by('-created_at')[:5], to_attr='comments'),
@@ -161,7 +257,6 @@ class SeriesViewSet(ModelViewSet):
                          queryset=MediaGallery.objects.order_by('-pk')[:5],
                          to_attr='gallery')) \
                 .order_by('-pk')
-
         else:
             return TvSeries.objects.filter()
 
@@ -181,28 +276,54 @@ class SeriesViewSet(ModelViewSet):
         }, many=True)
         return self.get_paginated_response(serializer.data)
 
-
-class SeasonViewSet(ModelViewSet):
-    http_method_names = ['get', 'post', 'patch', 'delete']
-    permission_classes = [IsSuperUser]
-    serializer_class = SeasonSerializer
-    queryset = Season.objects.all()
-
-    @action(methods=['GET'], detail=True, url_path='episode', url_name='episode')
-    def episode(self, request, pk):
-        queryset = self.get_object().episode_set.annotate(comments_count=Count("comment")).filter().order_by("-number")
-        page = self.paginate_queryset(queryset)
-        serializer = EpisodeSerializer(page, context={
+    @action(methods=['GET'], detail=True, url_path='season/all', url_name='season_all')
+    def season_all(self, request, pk):
+        queryset = Season.objects.filter(series_id=pk).order_by("-number")
+        serializer = SeasonSerializer(queryset, context={
             'request': self.request,
             'format': self.format_kwarg,
             'view': self
         }, many=True)
+        return Response(serializer.data)
+
+
+class SeasonViewSet(ModelViewSet):
+    http_method_names = ['get', 'post', 'patch', 'delete']
+    queryset = Season.objects.all()
+
+    def get_permissions(self):
+        if self.action in ['episode', ]:
+            return [AllowAny()]
+        return [IsSuperUser()]
+
+    def get_serializer_class(self):
+        if self.action == 'episode':
+            if self.request.user.is_superuser:
+                return EpisodeSerializer
+            return RetrieveEpisodeSerializer
+
+        return SeasonSerializer
+
+    @action(methods=['GET'], detail=True, url_path='episode', url_name='episode')
+    def episode(self, request, pk):
+        if request.user.is_superuser:
+            queryset = self.get_object().episode_set.annotate(comments_count=Count("comment")).filter().order_by(
+                "-number")
+        else:
+            queryset = Episode.objects.filter(season=pk).order_by('number')
+        page = self.paginate_queryset(queryset)
+        serializer = self.get_serializer(page, many=True)
         return self.get_paginated_response(serializer.data)
 
 
 class EpisodeViewSet(ModelViewSet):
     http_method_names = ['get', 'post', 'patch', 'delete']
-    permission_classes = [IsSuperUser]
+
+    def get_permissions(self):
+        if self.action == 'play':
+            return [IsAuthenticated()]
+
+        return [IsSuperUser()]
 
     def get_queryset(self):
         if self.action in ['partial_update']:
@@ -211,7 +332,7 @@ class EpisodeViewSet(ModelViewSet):
             return Episode.objects.select_related("video", "trailer") \
                 .annotate(rating_avg=Avg('rating', default=0)) \
                 .prefetch_related(
-                Prefetch("casts", queryset=Cast.objects.select_related('artist').distinct('artist', 'position'),
+                Prefetch("casts", queryset=Cast.objects.select_related('artist'),
                          to_attr='media_casts'),
                 Prefetch("comment_set",
                          queryset=Comment.objects.filter(state=Comment.CommentState.ACCEPT)
@@ -222,7 +343,7 @@ class EpisodeViewSet(ModelViewSet):
                 .order_by('-pk')
 
         else:
-            return TvSeries.objects.filter()
+            return Episode.objects.filter()
 
     def get_serializer_class(self):
         if self.action in ['create', 'partial_update']:
@@ -240,6 +361,15 @@ class EpisodeViewSet(ModelViewSet):
             'view': self
         })
         return self.get_paginated_response(serializer.data)
+
+    @action(methods=['get'], detail=True)
+    def play(self, request, pk):
+        episode = Episode.objects.select_related('season__series__media').select_related('video').get(pk=pk)
+
+        return Response(MediaFilePlaySerializer(episode.video, context={
+            'request': request,
+            'media': episode.season.series.media
+        }).data)
 
 
 class MediaGalleryViewSet(mixins.CreateModelMixin,
@@ -261,7 +391,7 @@ class SliderViewSet(ModelViewSet):
     http_method_names = ['get', 'post', 'patch', 'delete']
 
     def get_permissions(self):
-        if self.action in ['retrieve', 'list']:
+        if self.action in ['retrieve', 'all']:
             return [AllowAny()]
         return [IsSuperUser()]
 
@@ -273,16 +403,30 @@ class SliderViewSet(ModelViewSet):
     def get_serializer_class(self):
         if self.action in ['create', 'partial_update']:
             return CreateSliderSerializer
-        elif self.action in ['retrieve', 'list']:
+        elif self.action in ['retrieve', 'list', 'all']:
             return SliderSerializer
+
+    @action(methods=['get'], detail=False, url_path='all', url_name='all')
+    def all(self, request):
+        queryset = Slider.objects \
+            .select_related('media') \
+            .annotate(rating=Avg('media__rating__rating')) \
+            .prefetch_related('media__genres', 'media__countries') \
+            .order_by('-priority')
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 class CollectionViewSet(ModelViewSet):
     http_method_names = ['get', 'post', 'patch', 'delete']
-    serializer_class = CollectionSerializer
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return AppCollectionSerializer
+        return CollectionSerializer
 
     def get_permissions(self):
-        if self.action == 'list':
+        if self.action in ['list', 'media']:
             return [AllowAny()]
         elif self.action == 'retrieve':
             return [CollectionRetrievePermission()]
@@ -295,8 +439,11 @@ class CollectionViewSet(ModelViewSet):
 
     def get_queryset(self):
         if self.action == 'list':
-            return Collection.objects.filter(state=Collection.CollectionState.ACCEPT, is_private=False).order_by(
-                '-last_update')
+            return Collection.objects.annotate(media_count=Count('media')) \
+                .filter(state=Collection.CollectionState.ACCEPT, is_private=False, media_count__gte=5) \
+                .prefetch_related(Prefetch("media", queryset=Media.objects.prefetch_related("genres", "countries")[:10],
+                                           to_attr='media2')) \
+                .order_by('-last_update')
         elif self.action == 'media':
             return Collection.objects.prefetch_related('media').filter()
         return Collection.objects.filter()
@@ -336,9 +483,14 @@ class CollectionViewSet(ModelViewSet):
 
     @action(methods=['get'], detail=True, url_name='media', url_path='media')
     def media(self, request, pk):
-        queryset = Media.objects.filter(collection=pk).order_by('-collectionmedia__pk')
-        page = self.paginate_queryset(queryset)
-        serializer = MediaSerializer(page, many=True)
+        page = self.paginate_queryset(
+            Media.objects.filter(collection=pk).prefetch_related("genres", "countries").order_by(
+                '-collectionmedia__pk'))
+        serializer = SliderMediaSerializer(page, context={
+            'request': self.request,
+            'format': self.format_kwarg,
+            'view': self
+        }, many=True)
         return self.get_paginated_response(serializer.data)
 
     @action(methods=['post'], detail=True, url_path='add', url_name='add')
@@ -374,8 +526,9 @@ class CommentViewSet(mixins.CreateModelMixin,
     queryset = Comment.objects.filter().order_by('-pk')
 
     def get_permissions(self):
-        if self.action == 'list' or self.action == 'confirm_comment' or self.action == 'media_comment' or \
-                self.action == 'episode_comment':
+        if self.action == 'media_comment' or self.action == 'episode_comment':
+            return [AllowAny()]
+        if self.action == 'list' or self.action == 'change_state':
             return [IsSuperUser()]
         elif self.action == 'create' or self.action == 'my_comment':
             return [IsAuthenticated()]
@@ -433,14 +586,13 @@ class CommentViewSet(mixins.CreateModelMixin,
 
     @action(methods=['get'], detail=False, url_name='media_comment', url_path='media/(?P<pk>[0-9]+)')
     def media_comment(self, request, pk):
-        queryset = Comment.objects.filter(media__pk=pk).order_by('-pk')
-        queryset = self.filter_queryset(queryset)
-        page = self.paginate_queryset(queryset)
-        serializer = self.get_serializer(page, context={
-            'request': self.request,
-            'format': self.format_kwarg,
-            'view': self
-        }, many=True)
+        if request.user.is_superuser:
+            page = self.paginate_queryset(Comment.objects.filter(media__pk=pk).order_by('-pk'))
+            serializer = self.get_serializer(page, many=True)
+        else:
+            page = self.paginate_queryset(
+                Comment.objects.filter(media__pk=pk, state=Comment.CommentState.ACCEPT).order_by('-pk'))
+            serializer = RetrieveCommentSerializer(page, many=True)
         return self.get_paginated_response(serializer.data)
 
     @action(methods=['get'], detail=False, url_name='episode_comment', url_path='episode/(?P<pk>[0-9]+)')
@@ -456,15 +608,16 @@ class CommentViewSet(mixins.CreateModelMixin,
         return self.get_paginated_response(serializer.data)
 
 
-class RatingViewSet(GenericViewSet, mixins.CreateModelMixin, mixins.DestroyModelMixin):
+class RatingViewSet(GenericViewSet, mixins.CreateModelMixin):
+    http_method_names = ['get', 'delete', 'post']
     serializer_class = RatingSerializer
     queryset = Rating.objects.all()
     permission_classes = [IsAuthenticated]
 
-    def create(self, request, *args, **kwargs):
-        request.data._mutable = True
-        request.data['user'] = request.user.id
-        return super().create(request, *args, **kwargs)
+    def destroy(self, request, pk):
+        rate = Rating.objects.get(media=pk, user=request.user)
+        rate.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(methods=['get'], detail=False, url_name='my_rating', url_path='me')
     def me_rating(self, request):
@@ -583,6 +736,7 @@ class DashboardViewSet(GenericViewSet):
 class AdminMediaViewSet(GenericViewSet):
     http_method_names = ['get']
     permission_classes = [IsSuperUser]
+    queryset = Movie.objects.filter()
 
     @action(methods=['get'], detail=False, url_name='movie', url_path='movie')
     def movie(self, request, *args, **kwargs):
@@ -727,13 +881,51 @@ class MediaUploaderView(APIView):
                         status=status.HTTP_200_OK)
 
 
-class MediaViewSet(GenericViewSet, mixins.ListModelMixin):
+class MediaViewSet(GenericViewSet, mixins.ListModelMixin, mixins.RetrieveModelMixin):
     http_method_names = ['get']
-    permission_classes = [IsSuperUser]
-    serializer_class = MediaSerializer
-    queryset = Media.objects.filter().order_by('-pk')
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'id', 'synopsis']
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return RetrieveMediaSerializer
+
+        return MediaSerializer
+
+    def get_queryset(self):
+        if self.action == 'retrieve':
+            #### for postgresql
+            # return Media.objects \
+            #     .annotate(rate=Avg('rating__rating')) \
+            #     .prefetch_related(
+            #     Prefetch("casts", queryset=Cast.objects.select_related('artist').distinct('artist', 'position')),
+            #     Prefetch("comment_set",
+            #              queryset=Comment.objects.filter(state=Comment.CommentState.ACCEPT)
+            #              .select_related('user')
+            #              .order_by('-created_at')[
+            #                       :10], to_attr='comments'))
+            #### for sqlite
+            return Media.objects \
+                .annotate(rate=Avg('rating__rating')) \
+                .prefetch_related(Prefetch("comment_set",
+                                           queryset=Comment.objects.filter(state=Comment.CommentState.ACCEPT)
+                                           .select_related('user')
+                                           .order_by('-created_at')[
+                                                    :10], to_attr='comments'))
+
+        return Media.objects.filter().order_by('-pk')
+
+    def get_permissions(self):
+        if self.action in ['retrieve', 'rate', 'gallery']:
+            return [AllowAny()]
+
+        return [IsSuperUser()]
+
+    @action(methods=['get'], detail=True, url_name='rate', url_path='rate')
+    def rate(self, request, pk):
+        queryset = Rating.objects.filter(media=pk).values('rating').annotate(count=Count('rating'))
+        serializer = MediaRateSerializer(queryset, many=True)
+        return Response(serializer.data)
 
     @action(methods=['GET'], detail=True, url_path='gallery', url_name='gallery')
     def gallery(self, request, pk):
@@ -745,6 +937,11 @@ class MediaViewSet(GenericViewSet, mixins.ListModelMixin):
             'view': self
         })
         return self.get_paginated_response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
 
 
 class UserViewSet(GenericViewSet, mixins.ListModelMixin):
@@ -765,7 +962,7 @@ class AdvertiseViewSet(ModelViewSet):
     http_method_names = ['get', 'post', 'patch', 'delete']
 
     def get_serializer_class(self):
-        if self.action == 'create':
+        if self.action in ['create', 'partial_update']:
             return CreateAdvertiseSerializer
         return AdvertiseSerializer
 
@@ -780,7 +977,26 @@ class AdvertiseViewSet(ModelViewSet):
     def get_permissions(self):
         if self.action == 'retrieve':
             return [AllowAny()]
+        if self.action == 'play':
+            return [IsAuthenticated()]
         return [IsSuperUser()]
+
+    @action(methods=['post'], detail=False)
+    def play(self, request):
+        adsSeen = AdvertiseSeenSerializer(data=request.data)
+        adsSeen.is_valid(raise_exception=True)
+        ads = Advertise.objects.annotate(count_play=Count('advertiseseen')).filter(
+            count_play__lt=F('number_repeated')).select_related('file').order_by('created_at').first()
+        if ads:
+            AdvertiseSeen.objects.create(user=request.user, advertise=ads, **adsSeen.validated_data)
+            serializer = PlayAdvertiseSerializer(ads, context={
+                'request': self.request,
+                'format': self.format_kwarg,
+                'view': self
+            })
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        return Response({}, status=status.HTTP_200_OK)
 
 
 class PlanViewSet(GenericViewSet, mixins.ListModelMixin, mixins.CreateModelMixin,
@@ -789,7 +1005,7 @@ class PlanViewSet(GenericViewSet, mixins.ListModelMixin, mixins.CreateModelMixin
     serializer_class = PlanSerializer
 
     def get_permissions(self):
-        if self.action == 'list' or self.action == 'retrieve':
+        if self.action == 'list' or self.action == 'retrieve' or self.action == 'all':
             return [AllowAny()]
 
         return [IsSuperUser()]
@@ -807,3 +1023,132 @@ class PlanViewSet(GenericViewSet, mixins.ListModelMixin, mixins.CreateModelMixin
 
         return Response(serializer.data)
 
+    @action(methods=['GET'], detail=False)
+    def all(self, request):
+        response = PlanSerializer(instance=Plan.objects.filter(is_enable=True).all(), many=True)
+        return Response(response.data, status=status.HTTP_200_OK)
+
+
+class SearchViewSet(GenericViewSet, mixins.ListModelMixin):
+    http_method_names = ['get']
+    serializer_class = SliderMediaSerializer
+    permission_classes = [AllowAny]
+    queryset = Media.objects.filter()
+
+    def list(self, request, *args, **kwargs):
+        params = SearchParamsSerializer(data=request.query_params)
+        params.is_valid(raise_exception=True)
+        filter = Q()
+
+        #### for postgres search
+        # if q := params.data.get('query', None):
+        #     filter &= Q(search=q)
+        #### sqllite query support
+        if q := params.data.get('query', None):
+            filter &= Q(name__contains=q) | Q(synopsis__contains=q)
+
+        if genres := params.data.get('genres', None):
+            filter &= Q(genres__in=genres)
+
+        if countries := params.data.get('countries', None):
+            filter &= Q(countries__in=countries)
+
+        if params.data.get('media_type') == 'series':
+            filter &= Q(tvseries__isnull=False)
+        elif params.data.get('media_type') == 'movie':
+            filter &= Q(tvseries__isnull=True)
+
+        if params.data.get('start_date', None):
+            filter &= Q(release_date__year__gte=params.data.get('start_date', None))
+            filter &= Q(release_date__year__lte=params.data.get('end_date', None))
+
+        #### for postgres search
+        # page = self.paginate_queryset(
+        #     Media.objects.prefetch_related("genres", "countries")
+        #     .annotate(rate=Avg('rating__rating'))
+        #     .annotate(search=SearchVector("synopsis", "name"))
+        #     .filter(filter).order_by(params.data.get('sort_by')))
+
+        #### sqllite query support
+        page = self.paginate_queryset(
+            Media.objects.prefetch_related("genres", "countries")
+            .annotate(rate=Avg('rating__rating'))
+            .filter(filter)
+            .order_by(params.data.get('sort_by')))
+
+        serializer = self.get_serializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
+
+
+class PaymentViewSet(GenericViewSet, mixins.ListModelMixin):
+    http_method_names = ['get', 'post']
+    queryset = Subscription.objects.filter()
+    permission_classes = [IsAuthenticated]
+    serializer_class = SubscriptionSerializer
+
+    @action(methods=['POST'], detail=False, permission_classes=[IsAuthenticated])
+    def buy(self, request):
+        payment_serializer = PaymentSerializer(data=request.data, context={
+            'request': self.request,
+            'format': self.format_kwarg,
+            'view': self
+        })
+        payment_serializer.is_valid(raise_exception=True)
+        payment, subscription = payment_serializer.save()
+        response = SubscriptionSerializer(subscription)
+
+        return Response(response.data, status=status.HTTP_200_OK)
+
+    def list(self, request, *args, **kwargs):
+        page = self.paginate_queryset(Subscription.objects.filter(user=request.user))
+        serializer = self.get_serializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
+
+
+class StreamViewSet(ViewSet):
+
+    @staticmethod
+    def streaming(path, start, end):
+        with open(path, "rb") as lf:
+            lf.seek(start)
+            while lf.tell() <= end:
+                bytes_to_read = min(8192, end - lf.tell() + 1)
+                data = lf.read(bytes_to_read)
+                if not data:
+                    break
+                yield data
+
+    @action(methods=['get'], detail=True, permission_classes=[AllowAny], url_path='file')
+    def file(self, request, pk):
+        data = MediaFile.objects.get(pk=pk).file
+
+        name, extension = os.path.splitext(data.name)
+        extension = extension.lower()
+        mime_type, _ = mimetypes.guess_type(data.name)
+        if mime_type is None:
+            mime_type = 'application/octet-stream'
+
+        file_size = os.path.getsize(data.path)
+        range_header = request.headers.get('Range', None)
+        start = 0
+        end = file_size - 1
+
+        if range_header:
+            range_match = re.search(r'bytes=(\d+)-(\d*)', range_header)
+            if range_match:
+                start = int(range_match.group(1))
+                if range_match.group(2):
+                    end = int(range_match.group(2))
+
+        response = StreamingHttpResponse(
+            self.streaming(data.path, start, end),
+            content_type=mime_type,
+            status=206 if range_header else 200
+        )
+
+        response["Content-Disposition"] = f"inline; filename={name + extension}"
+        response["Accept-Ranges"] = "bytes"
+        response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+        response["Content-Length"] = str(end - start + 1)
+
+        return response

@@ -1,7 +1,5 @@
 from django.db import models
 
-from user.models import User
-
 
 # Create your models here.
 class Plan(models.Model):
@@ -13,19 +11,19 @@ class Plan(models.Model):
 
 
 class Payment(models.Model):
-    date = models.DateTimeField(auto_created=True)
+    date = models.DateTimeField(auto_now_add=True)
     price = models.IntegerField()
     tracking_code = models.IntegerField()
     receipt_number = models.IntegerField()
     is_successful = models.BooleanField()
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user = models.ForeignKey('user.User', on_delete=models.CASCADE)
 
 
 class Subscription(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user = models.ForeignKey('user.User', on_delete=models.CASCADE)
     payment = models.ForeignKey(Payment, on_delete=models.CASCADE)
     plan = models.ForeignKey(Plan, on_delete=models.CASCADE)
-    created_at = models.DateTimeField(auto_created=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     end_date = models.DateTimeField()
     title_plan = models.CharField(max_length=100, null=False)
     description_plan = models.TextField(null=False)

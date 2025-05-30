@@ -4,8 +4,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from api.views import AuthViewSet, GenreViewSet, CountryViewSet, ArtistViewSet, MovieViewSet, SeriesViewSet, \
     SeasonViewSet, EpisodeViewSet, MediaGalleryViewSet, SliderViewSet, CollectionViewSet, CommentViewSet, RatingViewSet, \
-    DashboardViewSet, AdminMediaViewSet, MediaUploaderView, MediaViewSet,\
-    AdvertiseViewSet, PlanViewSet, UserViewSet
+    DashboardViewSet, AdminMediaViewSet, MediaUploaderView, MediaViewSet, \
+    AdvertiseViewSet, PlanViewSet, UserViewSet, SearchViewSet, PaymentViewSet, StreamViewSet
 
 url = DefaultRouter()
 url.register('auth', AuthViewSet, basename='auth')
@@ -27,8 +27,12 @@ url.register('media', MediaViewSet, basename='media')
 url.register('advertise', AdvertiseViewSet, basename='advertise')
 url.register('plan', PlanViewSet, basename='plan')
 url.register('user', UserViewSet, basename='user')
+url.register('search', SearchViewSet, basename='search')
+url.register('payment', PaymentViewSet, basename='payment')
+url.register('stream', StreamViewSet, basename='stream')
 
 urlpatterns = [
-                  path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+                  # path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
                   path('upload/', MediaUploaderView.as_view(), name='upload'),
+                  # path('search/', SearchViewSet.as_view(), name='search'),
               ] + url.get_urls()
